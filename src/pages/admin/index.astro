@@ -8,7 +8,7 @@ import EventCard from '../../components/EventCard.astro';
 const createResult = Astro.getActionResult(actions.createEvent);
 const signoutResult = Astro.getActionResult(actions.signout);
 
-if (signoutResult?.data?.success) {
+if (signoutResult && !signoutResult.error) {
   return Astro.redirect('/login');
 }
 

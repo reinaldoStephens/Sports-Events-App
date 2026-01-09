@@ -1,0 +1,122 @@
+---
+import { actions } from 'astro:actions';
+
+interface Props {
+  eventTitle: string;
+  eventId: string;
+}
+
+const { eventTitle, eventId } = Astro.props;
+
+// We'll handle form submission via standard form action or client-side script enhancement if needed.
+// For simplicity and robustness with Astro Actions, we use standard form submission.
+// However, to keep it a "modal" without page reload, we might want client-side JS handling.
+// Given the requirements, let's use standard progressive enhancement.
+---
+
+<dialog id={`register-modal-${eventId}`} class="rounded-xl shadow-2xl p-0 backdrop:bg-black/50 backdrop:backdrop-blur-sm open:animate-fade-in w-full max-w-md m-auto">
+  <div class="bg-white p-6 relative">
+    <button 
+      onclick={`document.getElementById('register-modal-${eventId}').close()`}
+      class="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+    
+    <div class="text-center mb-6">
+      <h3 class="text-xl font-bold text-gray-900">Registrarse al Evento</h3>
+      <p class="text-sm text-gray-500 mt-1">Completa tus datos para asistir a <span class="font-medium text-blue-600">{eventTitle}</span></p>
+    </div>
+
+    <form method="POST" action={actions.registerGuest} class="space-y-4 register-form">
+      <input type="hidden" name="eventId" value={eventId} />
+      
+      <div>
+        <label for={`name-${eventId}`} class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+        <input 
+          type="text" 
+          name="name" 
+          id={`name-${eventId}`} 
+          required 
+          placeholder="Juan Pérez"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+        />
+      </div>
+
+      <div>
+        <label for={`email-${eventId}`} class="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
+        <input 
+          type="email" 
+          name="email" 
+          id={`email-${eventId}`} 
+          required 
+          placeholder="juan@ejemplo.com"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+        />
+      </div>
+
+      <div class="pt-2">
+        <button type="submit" class="w-full bg-slate-900 text-white font-medium py-2 px-4 rounded-lg hover:bg-slate-800 transition shadow-lg shadow-slate-900/20">
+          Confirmar Registro
+        </button>
+      </div>
+      
+      <p class="text-red-600 text-sm bg-red-50 p-2 rounded hidden error-message"></p>
+      <p class="text-green-600 text-sm bg-green-50 p-2 rounded hidden success-message">¡Registro exitoso!</p>
+    </form>
+  </div>
+</dialog>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  const forms = document.querySelectorAll('form.register-form') as NodeListOf<HTMLFormElement>;
+  
+  forms.forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      const errorMsg = form.querySelector('.error-message');
+      const successMsg = form.querySelector('.success-message');
+      const submitBtn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      
+      errorMsg?.classList.add('hidden');
+      successMsg?.classList.add('hidden');
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Registrando...';
+
+      const result = await actions.registerGuest(formData);
+
+      if (!result.error && result.data) {
+        successMsg?.classList.remove('hidden');
+        form.reset();
+        setTimeout(() => {
+          (form.closest('dialog') as HTMLDialogElement)?.close();
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Confirmar Registro';
+          successMsg?.classList.add('hidden');
+          // Optional: Reload or update UI
+          alert("¡Te has registrado exitosamente!");
+          window.location.reload();
+        }, 1500);
+      } else {
+        errorMsg!.textContent = result.error?.message || 'Ocurrió un error.';
+        errorMsg?.classList.remove('hidden');
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Confirmar Registro';
+      }
+    });
+  });
+</script>
+
+<style>
+  dialog[open] {
+    animation: zoomIn 0.2s ease-out;
+  }
+  @keyframes zoomIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+</style>

@@ -28,16 +28,13 @@ if (eventError || !event) {
 // Fetch Participants
 const { data: registrations, error: regError } = await adminSupabase
   .from('registrations')
-  .select(`
-    registration_date,
-    profiles (full_name, email)
-  `)
+  .select('registration_date, name, email')
   .eq('event_id', id)
   .order('registration_date', { ascending: false });
 
 const participants = registrations?.map(reg => ({
-  name: reg.profiles?.full_name || 'N/A',
-  email: reg.profiles?.email || 'N/A',
+  name: reg.name || 'N/A',
+  email: reg.email || 'N/A',
   date: new Date(reg.registration_date).toLocaleDateString() + ' ' + new Date(reg.registration_date).toLocaleTimeString(),
   rawDate: reg.registration_date
 })) || [];
