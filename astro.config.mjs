@@ -1,17 +1,15 @@
-
 import { defineConfig } from 'astro/config';
 import vercel from '@astrojs/vercel';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  // Cambiamos a 'server' para asegurar que se genere el servidor
+  // Forzamos el modo servidor para que genere el output de Vercel
   output: 'server',
-  adapter: vercel({
-    // Desactivamos funciones experimentales que podrían mover el entry.mjs de lugar
-    webAnalytics: { enabled: false },
-    isr: false 
-  }),
+  adapter: vercel(),
   vite: {
     plugins: [tailwindcss()],
+    build: {
+      cssMinify: true
+    }
   }
 });
