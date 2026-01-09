@@ -24,7 +24,15 @@
 			"dest": "_render"
 		},
 		{
+			"src": "^/admin/events/([^/]+?)/?$",
+			"dest": "_render"
+		},
+		{
 			"src": "^/admin/?$",
+			"dest": "_render"
+		},
+		{
+			"src": "^/login/?$",
 			"dest": "_render"
 		},
 		{

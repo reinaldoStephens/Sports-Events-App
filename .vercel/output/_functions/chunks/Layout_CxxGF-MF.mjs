@@ -1,7 +1,7 @@
-import { e as createComponent, f as createAstro, h as addAttribute, l as renderHead, n as renderSlot, r as renderTemplate } from './astro/server_DmY11HuA.mjs';
+import { e as createComponent, f as createAstro, h as addAttribute, n as renderHead, o as renderSlot, r as renderTemplate } from './astro/server_CiWqt42D.mjs';
 import 'piccolore';
 import 'clsx';
-/* empty css                         */
+/* empty css                        */
 
 const $$Astro = createAstro();
 const $$Layout = createComponent(($$result, $$props, $$slots) => {

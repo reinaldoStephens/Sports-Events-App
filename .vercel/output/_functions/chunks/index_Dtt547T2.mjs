@@ -1,31 +1,13 @@
-import { z } from 'zod';
-import { C as decryptString, G as createSlotValueFromString, H as isAstroComponentFactory, k as renderComponent, r as renderTemplate, p as REROUTE_DIRECTIVE_HEADER, A as AstroError, J as i18nNoLocaleFoundInPath, K as ResponseSentError, O as MiddlewareNoDataOrNextCalled, P as MiddlewareNotAResponse, Q as originPathnameSymbol, S as RewriteWithBodyUsed, T as GetStaticPathsRequired, V as InvalidGetStaticPathsReturn, W as InvalidGetStaticPathsEntry, X as GetStaticPathsExpectedParams, Y as GetStaticPathsInvalidRouteParam, Z as PageNumberParamNotFound, D as DEFAULT_404_COMPONENT, _ as NoMatchingStaticPathFound, $ as PrerenderDynamicEndpointPathCollide, a0 as ReservedSlotName, a1 as renderSlotToString, a2 as renderJSX, a3 as chunkToString, a4 as isRenderInstruction, a5 as ForbiddenRewrite, a6 as SessionStorageInitError, a7 as SessionStorageSaveError, R as ROUTE_TYPE_HEADER, a8 as ASTRO_VERSION, a9 as CspNotEnabled, aa as LocalsReassigned, ab as generateCspDigest, ac as PrerenderClientAddressNotAvailable, v as clientAddressSymbol, ad as ClientAddressNotAvailable, ae as StaticClientAddressNotAvailable, af as AstroResponseHeadersReassigned, y as responseSentSymbol$1, ag as renderPage, ah as REWRITE_DIRECTIVE_HEADER_KEY, ai as REWRITE_DIRECTIVE_HEADER_VALUE, aj as renderEndpoint, ak as ActionCalledFromServerError, q as ActionNotFoundError } from './astro/server_DmY11HuA.mjs';
-import { a as appendForwardSlash, j as joinPaths, r as removeTrailingForwardSlash, p as prependForwardSlash, t as trimSlashes } from './path_De6Se6hL.mjs';
+import { G as decryptString, H as createSlotValueFromString, J as isAstroComponentFactory, l as renderComponent, r as renderTemplate, q as REROUTE_DIRECTIVE_HEADER, A as AstroError, K as i18nNoLocaleFoundInPath, O as ResponseSentError, P as originPathnameSymbol, Q as RewriteWithBodyUsed, S as GetStaticPathsRequired, T as InvalidGetStaticPathsReturn, V as InvalidGetStaticPathsEntry, W as GetStaticPathsExpectedParams, X as GetStaticPathsInvalidRouteParam, Y as PageNumberParamNotFound, D as DEFAULT_404_COMPONENT, Z as NoMatchingStaticPathFound, _ as PrerenderDynamicEndpointPathCollide, $ as ReservedSlotName, a0 as renderSlotToString, a1 as renderJSX, a2 as chunkToString, a3 as isRenderInstruction, a4 as ActionCalledFromServerError, v as ActionNotFoundError, a5 as MiddlewareNoDataOrNextCalled, a6 as MiddlewareNotAResponse, a7 as SessionStorageInitError, a8 as SessionStorageSaveError, R as ROUTE_TYPE_HEADER, a9 as ForbiddenRewrite, aa as ASTRO_VERSION, ab as CspNotEnabled, ac as LocalsReassigned, ad as generateCspDigest, ae as PrerenderClientAddressNotAvailable, w as clientAddressSymbol, af as ClientAddressNotAvailable, ag as StaticClientAddressNotAvailable, ah as AstroResponseHeadersReassigned, z as responseSentSymbol$1, ai as renderPage, aj as REWRITE_DIRECTIVE_HEADER_KEY, ak as REWRITE_DIRECTIVE_HEADER_VALUE, al as renderEndpoint } from './astro/server_CiWqt42D.mjs';
 import colors from 'piccolore';
-import { g as getActionQueryString, d as deserializeActionResult, D as DEFAULT_404_ROUTE, h as callSafely, A as ActionError, i as ActionInputError, s as serializeActionResult, j as ACTION_RPC_ROUTE_PATTERN, b as ACTION_QUERY_PARAMS } from './astro-designed-error-pages_kmQSGMhL.mjs';
-import 'es-module-lexer';
 import 'clsx';
+import 'es-module-lexer';
+import { g as getActionQueryString, d as deserializeActionResult, D as DEFAULT_404_ROUTE, h as callSafely, A as ActionError, j as ActionInputError, s as serializeActionResult, k as ACTION_RPC_ROUTE_PATTERN, b as ACTION_QUERY_PARAMS } from './astro-designed-error-pages_BU5zBeAq.mjs';
+import { z } from 'zod';
+import { a as appendForwardSlash, j as joinPaths, r as removeTrailingForwardSlash, p as prependForwardSlash, t as trimSlashes } from './path_De6Se6hL.mjs';
 import { serialize, parse } from 'cookie';
 import { unflatten as unflatten$1, stringify as stringify$1 } from 'devalue';
 import { createStorage, builtinDrivers } from 'unstorage';
-
-function shouldAppendForwardSlash(trailingSlash, buildFormat) {
-  switch (trailingSlash) {
-    case "always":
-      return true;
-    case "never":
-      return false;
-    case "ignore": {
-      switch (buildFormat) {
-        case "directory":
-          return true;
-        case "preserve":
-        case "file":
-          return false;
-      }
-    }
-  }
-}
 
 const ACTION_API_CONTEXT_SYMBOL = Symbol.for("astro.actionAPIContext");
 const formContentTypes = ["application/x-www-form-urlencoded", "multipart/form-data"];
@@ -55,6 +37,24 @@ function createCallAction(context) {
     const action = baseAction.bind(context);
     return action(input);
   };
+}
+
+function shouldAppendForwardSlash(trailingSlash, buildFormat) {
+  switch (trailingSlash) {
+    case "always":
+      return true;
+    case "never":
+      return false;
+    case "ignore": {
+      switch (buildFormat) {
+        case "directory":
+          return true;
+        case "preserve":
+        case "file":
+          return false;
+      }
+    }
+  }
 }
 
 function redirectIsExternal(redirect) {
@@ -755,71 +755,6 @@ function* getSetCookiesFromResponse(response) {
   return [];
 }
 
-function deduplicateDirectiveValues(existingDirective, newDirective) {
-  const [directiveName, ...existingValues] = existingDirective.split(/\s+/).filter(Boolean);
-  const [newDirectiveName, ...newValues] = newDirective.split(/\s+/).filter(Boolean);
-  if (directiveName !== newDirectiveName) {
-    return void 0;
-  }
-  const finalDirectives = Array.from(/* @__PURE__ */ new Set([...existingValues, ...newValues]));
-  return `${directiveName} ${finalDirectives.join(" ")}`;
-}
-function pushDirective(directives, newDirective) {
-  let deduplicated = false;
-  if (directives.length === 0) {
-    return [newDirective];
-  }
-  const finalDirectives = [];
-  for (const directive of directives) {
-    if (deduplicated) {
-      finalDirectives.push(directive);
-      continue;
-    }
-    const result = deduplicateDirectiveValues(directive, newDirective);
-    if (result) {
-      finalDirectives.push(result);
-      deduplicated = true;
-    } else {
-      finalDirectives.push(directive);
-      finalDirectives.push(newDirective);
-    }
-  }
-  return finalDirectives;
-}
-
-async function callMiddleware(onRequest, apiContext, responseFunction) {
-  let nextCalled = false;
-  let responseFunctionPromise = void 0;
-  const next = async (payload) => {
-    nextCalled = true;
-    responseFunctionPromise = responseFunction(apiContext, payload);
-    return responseFunctionPromise;
-  };
-  let middlewarePromise = onRequest(apiContext, next);
-  return await Promise.resolve(middlewarePromise).then(async (value) => {
-    if (nextCalled) {
-      if (typeof value !== "undefined") {
-        if (value instanceof Response === false) {
-          throw new AstroError(MiddlewareNotAResponse);
-        }
-        return value;
-      } else {
-        if (responseFunctionPromise) {
-          return responseFunctionPromise;
-        } else {
-          throw new AstroError(MiddlewareNotAResponse);
-        }
-      }
-    } else if (typeof value === "undefined") {
-      throw new AstroError(MiddlewareNoDataOrNextCalled);
-    } else if (value instanceof Response === false) {
-      throw new AstroError(MiddlewareNotAResponse);
-    } else {
-      return value;
-    }
-  });
-}
-
 function createRequest({
   url,
   headers,
@@ -1353,74 +1288,252 @@ class Slots {
   }
 }
 
-function sequence(...handlers) {
-  const filtered = handlers.filter((h) => !!h);
-  const length = filtered.length;
-  if (!length) {
-    return defineMiddleware((_context, next) => {
-      return next();
-    });
+function defineAction({
+  accept,
+  input: inputSchema,
+  handler
+}) {
+  const serverHandler = getFormServerHandler(handler, inputSchema) ;
+  async function safeServerHandler(unparsedInput) {
+    if (typeof this === "function" || !isActionAPIContext(this)) {
+      throw new AstroError(ActionCalledFromServerError);
+    }
+    return callSafely(() => serverHandler(unparsedInput, this));
   }
-  return defineMiddleware((context, next) => {
-    let carriedPayload = void 0;
-    return applyHandle(0, context);
-    function applyHandle(i, handleContext) {
-      const handle = filtered[i];
-      const result = handle(handleContext, async (payload) => {
-        if (i < length - 1) {
-          if (payload) {
-            let newRequest;
-            if (payload instanceof Request) {
-              newRequest = payload;
-            } else if (payload instanceof URL) {
-              newRequest = new Request(payload, handleContext.request.clone());
-            } else {
-              newRequest = new Request(
-                new URL(payload, handleContext.url.origin),
-                handleContext.request.clone()
-              );
-            }
-            const oldPathname = handleContext.url.pathname;
-            const pipeline = Reflect.get(handleContext, apiContextRoutesSymbol);
-            const { routeData, pathname } = await pipeline.tryRewrite(
-              payload,
-              handleContext.request
-            );
-            if (pipeline.serverLike === true && handleContext.isPrerendered === false && routeData.prerender === true) {
-              throw new AstroError({
-                ...ForbiddenRewrite,
-                message: ForbiddenRewrite.message(
-                  handleContext.url.pathname,
-                  pathname,
-                  routeData.component
-                ),
-                hint: ForbiddenRewrite.hint(routeData.component)
-              });
-            }
-            carriedPayload = payload;
-            handleContext.request = newRequest;
-            handleContext.url = new URL(newRequest.url);
-            handleContext.params = getParams(routeData, pathname);
-            handleContext.routePattern = routeData.route;
-            setOriginPathname(
-              handleContext.request,
-              oldPathname,
-              pipeline.manifest.trailingSlash,
-              pipeline.manifest.buildFormat
-            );
-          }
-          return applyHandle(i + 1, handleContext);
-        } else {
-          return next(payload ?? carriedPayload);
-        }
-      });
-      return result;
+  Object.assign(safeServerHandler, {
+    orThrow(unparsedInput) {
+      if (typeof this === "function") {
+        throw new AstroError(ActionCalledFromServerError);
+      }
+      return serverHandler(unparsedInput, this);
     }
   });
+  return safeServerHandler;
+}
+function getFormServerHandler(handler, inputSchema) {
+  return async (unparsedInput, context) => {
+    if (!(unparsedInput instanceof FormData)) {
+      throw new ActionError({
+        code: "UNSUPPORTED_MEDIA_TYPE",
+        message: "This action only accepts FormData."
+      });
+    }
+    if (!inputSchema) return await handler(unparsedInput, context);
+    const baseSchema = unwrapBaseObjectSchema(inputSchema, unparsedInput);
+    const parsed = await inputSchema.safeParseAsync(
+      baseSchema instanceof z.ZodObject ? formDataToObject(unparsedInput, baseSchema) : unparsedInput
+    );
+    if (!parsed.success) {
+      throw new ActionInputError(parsed.error.issues);
+    }
+    return await handler(parsed.data, context);
+  };
+}
+function formDataToObject(formData, schema) {
+  const obj = schema._def.unknownKeys === "passthrough" ? Object.fromEntries(formData.entries()) : {};
+  for (const [key, baseValidator] of Object.entries(schema.shape)) {
+    let validator = baseValidator;
+    while (validator instanceof z.ZodOptional || validator instanceof z.ZodNullable || validator instanceof z.ZodDefault) {
+      if (validator instanceof z.ZodDefault && !formData.has(key)) {
+        obj[key] = validator._def.defaultValue();
+      }
+      validator = validator._def.innerType;
+    }
+    if (!formData.has(key) && key in obj) {
+      continue;
+    } else if (validator instanceof z.ZodBoolean) {
+      const val = formData.get(key);
+      obj[key] = val === "true" ? true : val === "false" ? false : formData.has(key);
+    } else if (validator instanceof z.ZodArray) {
+      obj[key] = handleFormDataGetAll(key, formData, validator);
+    } else {
+      obj[key] = handleFormDataGet(key, formData, validator, baseValidator);
+    }
+  }
+  return obj;
+}
+function handleFormDataGetAll(key, formData, validator) {
+  const entries = Array.from(formData.getAll(key));
+  const elementValidator = validator._def.type;
+  if (elementValidator instanceof z.ZodNumber) {
+    return entries.map(Number);
+  } else if (elementValidator instanceof z.ZodBoolean) {
+    return entries.map(Boolean);
+  }
+  return entries;
+}
+function handleFormDataGet(key, formData, validator, baseValidator) {
+  const value = formData.get(key);
+  if (!value) {
+    return baseValidator instanceof z.ZodOptional ? void 0 : null;
+  }
+  return validator instanceof z.ZodNumber ? Number(value) : value;
+}
+function unwrapBaseObjectSchema(schema, unparsedInput) {
+  while (schema instanceof z.ZodEffects || schema instanceof z.ZodPipeline) {
+    if (schema instanceof z.ZodEffects) {
+      schema = schema._def.schema;
+    }
+    if (schema instanceof z.ZodPipeline) {
+      schema = schema._def.in;
+    }
+  }
+  if (schema instanceof z.ZodDiscriminatedUnion) {
+    const typeKey = schema._def.discriminator;
+    const typeValue = unparsedInput.get(typeKey);
+    if (typeof typeValue !== "string") return schema;
+    const objSchema = schema._def.optionsMap.get(typeValue);
+    if (!objSchema) return schema;
+    return objSchema;
+  }
+  return schema;
+}
+function getActionContext(context) {
+  const callerInfo = getCallerInfo(context);
+  const actionResultAlreadySet = Boolean(context.locals._actionPayload);
+  let action = void 0;
+  if (callerInfo && context.request.method === "POST" && !actionResultAlreadySet) {
+    action = {
+      calledFrom: callerInfo.from,
+      name: callerInfo.name,
+      handler: async () => {
+        const pipeline = Reflect.get(context, apiContextRoutesSymbol);
+        const callerInfoName = shouldAppendForwardSlash(
+          pipeline.manifest.trailingSlash,
+          pipeline.manifest.buildFormat
+        ) ? removeTrailingForwardSlash(callerInfo.name) : callerInfo.name;
+        let baseAction;
+        try {
+          baseAction = await pipeline.getAction(callerInfoName);
+        } catch (error) {
+          if (error instanceof Error && "name" in error && typeof error.name === "string" && error.name === ActionNotFoundError.name) {
+            return { data: void 0, error: new ActionError({ code: "NOT_FOUND" }) };
+          }
+          throw error;
+        }
+        let input;
+        try {
+          input = await parseRequestBody(context.request);
+        } catch (e) {
+          if (e instanceof TypeError) {
+            return { data: void 0, error: new ActionError({ code: "UNSUPPORTED_MEDIA_TYPE" }) };
+          }
+          throw e;
+        }
+        const omitKeys = ["props", "getActionResult", "callAction", "redirect"];
+        const actionAPIContext = Object.create(
+          Object.getPrototypeOf(context),
+          Object.fromEntries(
+            Object.entries(Object.getOwnPropertyDescriptors(context)).filter(
+              ([key]) => !omitKeys.includes(key)
+            )
+          )
+        );
+        Reflect.set(actionAPIContext, ACTION_API_CONTEXT_SYMBOL, true);
+        const handler = baseAction.bind(actionAPIContext);
+        return handler(input);
+      }
+    };
+  }
+  function setActionResult(actionName, actionResult) {
+    context.locals._actionPayload = {
+      actionResult,
+      actionName
+    };
+  }
+  return {
+    action,
+    setActionResult,
+    serializeActionResult,
+    deserializeActionResult
+  };
+}
+function getCallerInfo(ctx) {
+  if (ctx.routePattern === ACTION_RPC_ROUTE_PATTERN) {
+    return { from: "rpc", name: ctx.url.pathname.replace(/^.*\/_actions\//, "") };
+  }
+  const queryParam = ctx.url.searchParams.get(ACTION_QUERY_PARAMS.actionName);
+  if (queryParam) {
+    return { from: "form", name: queryParam };
+  }
+  return void 0;
+}
+async function parseRequestBody(request) {
+  const contentType = request.headers.get("content-type");
+  const contentLength = request.headers.get("Content-Length");
+  if (!contentType) return void 0;
+  if (hasContentType(contentType, formContentTypes)) {
+    return await request.clone().formData();
+  }
+  if (hasContentType(contentType, ["application/json"])) {
+    return contentLength === "0" ? void 0 : await request.clone().json();
+  }
+  throw new TypeError("Unsupported content type");
 }
 
-function defineMiddleware(fn) {
-  return fn;
+function deduplicateDirectiveValues(existingDirective, newDirective) {
+  const [directiveName, ...existingValues] = existingDirective.split(/\s+/).filter(Boolean);
+  const [newDirectiveName, ...newValues] = newDirective.split(/\s+/).filter(Boolean);
+  if (directiveName !== newDirectiveName) {
+    return void 0;
+  }
+  const finalDirectives = Array.from(/* @__PURE__ */ new Set([...existingValues, ...newValues]));
+  return `${directiveName} ${finalDirectives.join(" ")}`;
+}
+function pushDirective(directives, newDirective) {
+  let deduplicated = false;
+  if (directives.length === 0) {
+    return [newDirective];
+  }
+  const finalDirectives = [];
+  for (const directive of directives) {
+    if (deduplicated) {
+      finalDirectives.push(directive);
+      continue;
+    }
+    const result = deduplicateDirectiveValues(directive, newDirective);
+    if (result) {
+      finalDirectives.push(result);
+      deduplicated = true;
+    } else {
+      finalDirectives.push(directive);
+      finalDirectives.push(newDirective);
+    }
+  }
+  return finalDirectives;
+}
+
+async function callMiddleware(onRequest, apiContext, responseFunction) {
+  let nextCalled = false;
+  let responseFunctionPromise = void 0;
+  const next = async (payload) => {
+    nextCalled = true;
+    responseFunctionPromise = responseFunction(apiContext, payload);
+    return responseFunctionPromise;
+  };
+  let middlewarePromise = onRequest(apiContext, next);
+  return await Promise.resolve(middlewarePromise).then(async (value) => {
+    if (nextCalled) {
+      if (typeof value !== "undefined") {
+        if (value instanceof Response === false) {
+          throw new AstroError(MiddlewareNotAResponse);
+        }
+        return value;
+      } else {
+        if (responseFunctionPromise) {
+          return responseFunctionPromise;
+        } else {
+          throw new AstroError(MiddlewareNotAResponse);
+        }
+      }
+    } else if (typeof value === "undefined") {
+      throw new AstroError(MiddlewareNoDataOrNextCalled);
+    } else if (value instanceof Response === false) {
+      throw new AstroError(MiddlewareNotAResponse);
+    } else {
+      return value;
+    }
+  });
 }
 
 const PERSIST_SYMBOL = Symbol();
@@ -2536,187 +2649,74 @@ class RenderContext {
   }
 }
 
-function defineAction({
-  accept,
-  input: inputSchema,
-  handler
-}) {
-  const serverHandler = getFormServerHandler(handler, inputSchema) ;
-  async function safeServerHandler(unparsedInput) {
-    if (typeof this === "function" || !isActionAPIContext(this)) {
-      throw new AstroError(ActionCalledFromServerError);
-    }
-    return callSafely(() => serverHandler(unparsedInput, this));
+function sequence(...handlers) {
+  const filtered = handlers.filter((h) => !!h);
+  const length = filtered.length;
+  if (!length) {
+    return defineMiddleware((_context, next) => {
+      return next();
+    });
   }
-  Object.assign(safeServerHandler, {
-    orThrow(unparsedInput) {
-      if (typeof this === "function") {
-        throw new AstroError(ActionCalledFromServerError);
-      }
-      return serverHandler(unparsedInput, this);
+  return defineMiddleware((context, next) => {
+    let carriedPayload = void 0;
+    return applyHandle(0, context);
+    function applyHandle(i, handleContext) {
+      const handle = filtered[i];
+      const result = handle(handleContext, async (payload) => {
+        if (i < length - 1) {
+          if (payload) {
+            let newRequest;
+            if (payload instanceof Request) {
+              newRequest = payload;
+            } else if (payload instanceof URL) {
+              newRequest = new Request(payload, handleContext.request.clone());
+            } else {
+              newRequest = new Request(
+                new URL(payload, handleContext.url.origin),
+                handleContext.request.clone()
+              );
+            }
+            const oldPathname = handleContext.url.pathname;
+            const pipeline = Reflect.get(handleContext, apiContextRoutesSymbol);
+            const { routeData, pathname } = await pipeline.tryRewrite(
+              payload,
+              handleContext.request
+            );
+            if (pipeline.serverLike === true && handleContext.isPrerendered === false && routeData.prerender === true) {
+              throw new AstroError({
+                ...ForbiddenRewrite,
+                message: ForbiddenRewrite.message(
+                  handleContext.url.pathname,
+                  pathname,
+                  routeData.component
+                ),
+                hint: ForbiddenRewrite.hint(routeData.component)
+              });
+            }
+            carriedPayload = payload;
+            handleContext.request = newRequest;
+            handleContext.url = new URL(newRequest.url);
+            handleContext.params = getParams(routeData, pathname);
+            handleContext.routePattern = routeData.route;
+            setOriginPathname(
+              handleContext.request,
+              oldPathname,
+              pipeline.manifest.trailingSlash,
+              pipeline.manifest.buildFormat
+            );
+          }
+          return applyHandle(i + 1, handleContext);
+        } else {
+          return next(payload ?? carriedPayload);
+        }
+      });
+      return result;
     }
   });
-  return safeServerHandler;
-}
-function getFormServerHandler(handler, inputSchema) {
-  return async (unparsedInput, context) => {
-    if (!(unparsedInput instanceof FormData)) {
-      throw new ActionError({
-        code: "UNSUPPORTED_MEDIA_TYPE",
-        message: "This action only accepts FormData."
-      });
-    }
-    if (!inputSchema) return await handler(unparsedInput, context);
-    const baseSchema = unwrapBaseObjectSchema(inputSchema, unparsedInput);
-    const parsed = await inputSchema.safeParseAsync(
-      baseSchema instanceof z.ZodObject ? formDataToObject(unparsedInput, baseSchema) : unparsedInput
-    );
-    if (!parsed.success) {
-      throw new ActionInputError(parsed.error.issues);
-    }
-    return await handler(parsed.data, context);
-  };
-}
-function formDataToObject(formData, schema) {
-  const obj = schema._def.unknownKeys === "passthrough" ? Object.fromEntries(formData.entries()) : {};
-  for (const [key, baseValidator] of Object.entries(schema.shape)) {
-    let validator = baseValidator;
-    while (validator instanceof z.ZodOptional || validator instanceof z.ZodNullable || validator instanceof z.ZodDefault) {
-      if (validator instanceof z.ZodDefault && !formData.has(key)) {
-        obj[key] = validator._def.defaultValue();
-      }
-      validator = validator._def.innerType;
-    }
-    if (!formData.has(key) && key in obj) {
-      continue;
-    } else if (validator instanceof z.ZodBoolean) {
-      const val = formData.get(key);
-      obj[key] = val === "true" ? true : val === "false" ? false : formData.has(key);
-    } else if (validator instanceof z.ZodArray) {
-      obj[key] = handleFormDataGetAll(key, formData, validator);
-    } else {
-      obj[key] = handleFormDataGet(key, formData, validator, baseValidator);
-    }
-  }
-  return obj;
-}
-function handleFormDataGetAll(key, formData, validator) {
-  const entries = Array.from(formData.getAll(key));
-  const elementValidator = validator._def.type;
-  if (elementValidator instanceof z.ZodNumber) {
-    return entries.map(Number);
-  } else if (elementValidator instanceof z.ZodBoolean) {
-    return entries.map(Boolean);
-  }
-  return entries;
-}
-function handleFormDataGet(key, formData, validator, baseValidator) {
-  const value = formData.get(key);
-  if (!value) {
-    return baseValidator instanceof z.ZodOptional ? void 0 : null;
-  }
-  return validator instanceof z.ZodNumber ? Number(value) : value;
-}
-function unwrapBaseObjectSchema(schema, unparsedInput) {
-  while (schema instanceof z.ZodEffects || schema instanceof z.ZodPipeline) {
-    if (schema instanceof z.ZodEffects) {
-      schema = schema._def.schema;
-    }
-    if (schema instanceof z.ZodPipeline) {
-      schema = schema._def.in;
-    }
-  }
-  if (schema instanceof z.ZodDiscriminatedUnion) {
-    const typeKey = schema._def.discriminator;
-    const typeValue = unparsedInput.get(typeKey);
-    if (typeof typeValue !== "string") return schema;
-    const objSchema = schema._def.optionsMap.get(typeValue);
-    if (!objSchema) return schema;
-    return objSchema;
-  }
-  return schema;
-}
-function getActionContext(context) {
-  const callerInfo = getCallerInfo(context);
-  const actionResultAlreadySet = Boolean(context.locals._actionPayload);
-  let action = void 0;
-  if (callerInfo && context.request.method === "POST" && !actionResultAlreadySet) {
-    action = {
-      calledFrom: callerInfo.from,
-      name: callerInfo.name,
-      handler: async () => {
-        const pipeline = Reflect.get(context, apiContextRoutesSymbol);
-        const callerInfoName = shouldAppendForwardSlash(
-          pipeline.manifest.trailingSlash,
-          pipeline.manifest.buildFormat
-        ) ? removeTrailingForwardSlash(callerInfo.name) : callerInfo.name;
-        let baseAction;
-        try {
-          baseAction = await pipeline.getAction(callerInfoName);
-        } catch (error) {
-          if (error instanceof Error && "name" in error && typeof error.name === "string" && error.name === ActionNotFoundError.name) {
-            return { data: void 0, error: new ActionError({ code: "NOT_FOUND" }) };
-          }
-          throw error;
-        }
-        let input;
-        try {
-          input = await parseRequestBody(context.request);
-        } catch (e) {
-          if (e instanceof TypeError) {
-            return { data: void 0, error: new ActionError({ code: "UNSUPPORTED_MEDIA_TYPE" }) };
-          }
-          throw e;
-        }
-        const omitKeys = ["props", "getActionResult", "callAction", "redirect"];
-        const actionAPIContext = Object.create(
-          Object.getPrototypeOf(context),
-          Object.fromEntries(
-            Object.entries(Object.getOwnPropertyDescriptors(context)).filter(
-              ([key]) => !omitKeys.includes(key)
-            )
-          )
-        );
-        Reflect.set(actionAPIContext, ACTION_API_CONTEXT_SYMBOL, true);
-        const handler = baseAction.bind(actionAPIContext);
-        return handler(input);
-      }
-    };
-  }
-  function setActionResult(actionName, actionResult) {
-    context.locals._actionPayload = {
-      actionResult,
-      actionName
-    };
-  }
-  return {
-    action,
-    setActionResult,
-    serializeActionResult,
-    deserializeActionResult
-  };
-}
-function getCallerInfo(ctx) {
-  if (ctx.routePattern === ACTION_RPC_ROUTE_PATTERN) {
-    return { from: "rpc", name: ctx.url.pathname.replace(/^.*\/_actions\//, "") };
-  }
-  const queryParam = ctx.url.searchParams.get(ACTION_QUERY_PARAMS.actionName);
-  if (queryParam) {
-    return { from: "form", name: queryParam };
-  }
-  return void 0;
-}
-async function parseRequestBody(request) {
-  const contentType = request.headers.get("content-type");
-  const contentLength = request.headers.get("Content-Length");
-  if (!contentType) return void 0;
-  if (hasContentType(contentType, formContentTypes)) {
-    return await request.clone().formData();
-  }
-  if (hasContentType(contentType, ["application/json"])) {
-    return contentLength === "0" ? void 0 : await request.clone().json();
-  }
-  throw new TypeError("Unsupported content type");
 }
 
-export { PERSIST_SYMBOL as P, RouteCache as R, SERVER_ISLAND_COMPONENT as S, redirectToFallback as a, redirectToDefaultLocale as b, requestHasLocale as c, defineAction as d, normalizeTheLocale as e, defineMiddleware as f, getActionContext as g, SERVER_ISLAND_ROUTE as h, isRequestServerIsland as i, createEndpoint as j, findRouteToRewrite as k, RenderContext as l, matchRoute as m, notFound as n, getSetCookiesFromResponse as o, requestIs404Or500 as r, sequence as s, validateAndDecodePathname as v };
+function defineMiddleware(fn) {
+  return fn;
+}
+
+export { PERSIST_SYMBOL as P, RouteCache as R, SERVER_ISLAND_COMPONENT as S, defineAction as a, redirectToFallback as b, redirectToDefaultLocale as c, defineMiddleware as d, requestHasLocale as e, normalizeTheLocale as f, getActionContext as g, SERVER_ISLAND_ROUTE as h, isRequestServerIsland as i, createEndpoint as j, findRouteToRewrite as k, RenderContext as l, matchRoute as m, notFound as n, getSetCookiesFromResponse as o, requestIs404Or500 as r, sequence as s, validateAndDecodePathname as v };
