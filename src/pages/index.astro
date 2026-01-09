@@ -24,7 +24,11 @@ if (search) {
   query = query.or(`title.ilike.%${search}%,location.ilike.%${search}%`);
 }
 
+
 const { data: events, error } = await query;
+
+// Optimization: Cache this page for 60 seconds on the edge
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, s-maxage=60');
 ---
 
 <Layout title="Eventos Deportivos - Próximos Encuentros">

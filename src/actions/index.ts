@@ -178,7 +178,6 @@ export const server = {
       email: z.string().email("Invalid email"),
     }),
     handler: async ({ eventId, name, email }) => {
-      
       // DEBUG: Check env var
       if (!serviceRoleKey) {
          console.error("❌ CRITICAL ERROR: SUPABASE_SERVICE_ROLE_KEY is missing/undefined. Registration will likely fail.");
@@ -220,6 +219,28 @@ export const server = {
         throw new ActionError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Registration failed: ${error.message}`
+        });
+      }
+
+      return { success: true };
+    },
+  }),
+  deleteRegistration: defineAction({
+    accept: 'form',
+    input: z.object({
+      registrationId: z.string(),
+    }),
+    handler: async ({ registrationId }) => {
+      const { error } = await actionSupabase
+        .from('registrations')
+        .delete()
+        .eq('id', registrationId);
+
+      if (error) {
+        console.error('Delete Error:', error);
+        throw new ActionError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Deletion failed: ${error.message}`
         });
       }
 

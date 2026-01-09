@@ -121,7 +121,13 @@ const isEditMode = !!eventToEdit;
                       <span class="text-xs text-gray-500">Actual</span>
                   </div>
                 )}
-                <input type="file" name="image" id="image" accept="image/*" />
+                <input 
+                  type="file" 
+                  name="image" 
+                  id="image" 
+                  accept="image/*" 
+                  onchange="if(this.files[0] && this.files[0].size > 2 * 1024 * 1024) { alert('La imagen es muy pesada (Max 2MB).'); this.value = ''; }" 
+                />
               </div>
 
               <div class="pt-2 flex gap-2">

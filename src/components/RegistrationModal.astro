@@ -92,13 +92,18 @@ const { eventTitle, eventId } = Astro.props;
       if (!result.error && result.data) {
         successMsg?.classList.remove('hidden');
         form.reset();
+        
+        // Show success toast notification
+        if (typeof window.showToast === 'function') {
+          window.showToast('¡Te has registrado exitosamente!', 'success');
+        }
+        
         setTimeout(() => {
           (form.closest('dialog') as HTMLDialogElement)?.close();
           submitBtn.disabled = false;
           submitBtn.innerText = 'Confirmar Registro';
           successMsg?.classList.add('hidden');
-          // Optional: Reload or update UI
-          alert("¡Te has registrado exitosamente!");
+          // Reload to show new participant in the table
           window.location.reload();
         }, 1500);
       } else {
