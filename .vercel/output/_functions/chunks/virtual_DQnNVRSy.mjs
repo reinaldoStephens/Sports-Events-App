@@ -1,9 +1,8 @@
-import { g as getActionQueryString, a as astroCalledServerError, A as ActionError, d as deserializeActionResult, b as ACTION_QUERY_PARAMS, c as appendForwardSlash } from './astro-designed-error-pages_kmQSGMhL.mjs';
+import { g as getActionQueryString, a as astroCalledServerError, A as ActionError, d as deserializeActionResult, b as ACTION_QUERY_PARAMS, c as appendForwardSlash } from './astro-designed-error-pages_BU5zBeAq.mjs';
 import 'piccolore';
 import 'es-module-lexer';
-import './astro/server_DmY11HuA.mjs';
+import './astro/server_CiWqt42D.mjs';
 import 'clsx';
-import { createClient } from '@supabase/supabase-js';
 
 const internalFetchHeaders = {};
 
@@ -117,8 +116,4 @@ async function handleAction(param, path, context) {
 }
 const actions = toActionProxy();
 
-const supabaseUrl = "your_supabase_url";
-const supabaseAnonKey = "your_supabase_anon_key";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-export { actions as a, supabase as s };
+export { actions as a };
