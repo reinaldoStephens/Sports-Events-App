@@ -1,6 +1,10 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
 import { createClient } from '@supabase/supabase-js';
+import RegistrationModal from '../../../components/RegistrationModal.astro';
+import ToastNotification from '../../../components/ToastNotification.astro';
+import ConfirmationModal from '../../../components/ConfirmationModal.astro';
+import { actions } from 'astro:actions';
 
 const { id } = Astro.params;
 
@@ -28,16 +32,14 @@ if (eventError || !event) {
 // Fetch Participants
 const { data: registrations, error: regError } = await adminSupabase
   .from('registrations')
-  .select(`
-    registration_date,
-    profiles (full_name, email)
-  `)
+  .select('id, registration_date, name, email')
   .eq('event_id', id)
   .order('registration_date', { ascending: false });
 
 const participants = registrations?.map(reg => ({
-  name: reg.profiles?.full_name || 'N/A',
-  email: reg.profiles?.email || 'N/A',
+  id: reg.id,
+  name: reg.name || 'N/A',
+  email: reg.email || 'N/A',
   date: new Date(reg.registration_date).toLocaleDateString() + ' ' + new Date(reg.registration_date).toLocaleTimeString(),
   rawDate: reg.registration_date
 })) || [];
@@ -113,12 +115,11 @@ const participants = registrations?.map(reg => ({
                 <p class="text-slate-500 text-sm mt-1">Total: {participants.length}</p>
             </div>
             <button 
-                id="exportBtn"
-                class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={participants.length === 0}
+                onclick={`document.getElementById('register-modal-${event.id}').showModal()`}
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2 transition-colors"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                Exportar CVS
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                Agregar Participante
             </button>
         </div>
 
@@ -128,7 +129,8 @@ const participants = registrations?.map(reg => ({
                     <tr>
                         <th scope="col" class="px-6 py-3 rounded-l-lg">Nombre</th>
                         <th scope="col" class="px-6 py-3">Email</th>
-                        <th scope="col" class="px-6 py-3 rounded-r-lg">Fecha Registro</th>
+                        <th scope="col" class="px-6 py-3">Fecha Registro</th>
+                        <th scope="col" class="px-6 py-3 rounded-r-lg text-right">Acciones</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -137,11 +139,21 @@ const participants = registrations?.map(reg => ({
                             <td class="px-6 py-4 font-medium text-gray-900">{p.name}</td>
                             <td class="px-6 py-4">{p.email}</td>
                             <td class="px-6 py-4">{p.date}</td>
+                            <td class="px-6 py-4 text-right">
+                                <button
+                                    class="delete-btn text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
+                                    data-id={p.id}
+                                    data-name={p.name}
+                                    title="Eliminar Registro"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                            </td>
                         </tr>
                     ))}
                     {participants.length === 0 && (
                         <tr>
-                            <td colspan="3" class="px-6 py-12 text-center text-gray-400">
+                            <td colspan="4" class="px-6 py-12 text-center text-gray-400">
                                 No hay participantes registrados aún.
                             </td>
                         </tr>
@@ -150,29 +162,56 @@ const participants = registrations?.map(reg => ({
             </table>
         </div>
       </div>
+      
+      <RegistrationModal eventId={event.id} eventTitle={event.title} />
+      <ToastNotification />
+      <ConfirmationModal />
 
     </div>
   </main>
 </Layout>
 
-<script define:vars={{ participants, eventTitle: event.title }}>
-  document.getElementById('exportBtn')?.addEventListener('click', () => {
-      if (!participants || participants.length === 0) return;
+<script>
+  import { actions } from 'astro:actions';
 
-      const headers = ['Nombre,Email,Fecha Registro,Fecha Raw'];
-      const rows = participants.map(p => 
-          `"${p.name}","${p.email}","${p.date}","${p.rawDate}"`
-      );
-      
-      const csvContent = "data:text/csv;charset=utf-8," 
-          + headers.join('\n') + '\n' + rows.join('\n');
-          
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `${eventTitle}_participantes.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        const target = e.currentTarget as HTMLElement | null;
+        
+        if (!target) {
+            console.error('Event target not found');
+            return;
+        }
+
+        const id = target.getAttribute('data-id');
+        const name = target.getAttribute('data-name');
+        
+        if (!id || !name) {
+            console.error('Missing data attributes');
+            return;
+        }
+
+        window.showConfirm(
+            'Eliminar Participante',
+            `¿Estás seguro de que deseas eliminar a "${name}" del evento?`,
+            async () => {
+                try {
+                    const formData = new FormData();
+                    formData.append('registrationId', id);
+                    const result = await actions.deleteRegistration(formData);
+                    
+                    if (result.data?.success) {
+                        window.showToast('Participante eliminado exitosamente.', 'success');
+                        setTimeout(() => window.location.reload(), 1000);
+                    } else {
+                        window.showToast('Error al eliminar: ' + (result.error?.message || 'Desconocido'), 'error');
+                    }
+                } catch (err) {
+                    const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+                    window.showToast('Error de red o servidor: ' + errorMessage, 'error');
+                }
+            }
+        );
+    });
   });
 </script>

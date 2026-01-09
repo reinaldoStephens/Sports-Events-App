@@ -1,0 +1,68 @@
+---
+import RegistrationModal from './RegistrationModal.astro';
+
+interface Props {
+  event: {
+    id: string;
+    title: string;
+    description: string;
+    date: string;
+    location: string;
+    image_url: string;
+  };
+}
+
+const { event } = Astro.props;
+
+const dateObj = new Date(event.date);
+// Display format: Jul 15
+const dayMonth = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fullDate = dateObj.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+const time = dateObj.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+---
+
+<div class="group relative bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 h-[320px] isolate">
+    <!-- Background Image -->
+    {event.image_url ? (
+        <img src={event.image_url} alt={event.title} class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+    ) : (
+        <div class="absolute inset-0 w-full h-full bg-slate-200 flex items-center justify-center">
+            <span class="text-slate-400 font-medium tracking-widest text-xs uppercase">No Image</span>
+        </div>
+    )}
+    
+    <!-- Gradient Overlay -->
+    <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent transition-opacity duration-300"></div>
+
+    <!-- Content -->
+    <div class="absolute inset-0 p-5 flex flex-col justify-end text-white">
+        
+        <!-- Date Badge -->
+        <div class="absolute top-4 left-4 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg px-3 py-1.5 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span class="text-sm font-semibold tracking-wide">{dayMonth}</span>
+        </div>
+
+        <div class="transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
+            <h3 class="text-xl font-bold mb-1 leading-tight">{event.title}</h3>
+            <p class="text-gray-300 text-sm mb-3 line-clamp-1 flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {event.location} &bull; {time}
+            </p>
+            
+            <button 
+                onclick={`document.getElementById('register-modal-${event.id}').showModal()`}
+                class="w-full bg-white/10 hover:bg-white text-white hover:text-black border border-white/30 backdrop-blur-sm py-2 rounded-lg text-sm font-medium transition-all duration-300"
+            >
+                Registrarse
+            </button>
+        </div>
+    </div>
+</div>
+
+<RegistrationModal eventId={event.id} eventTitle={event.title} />

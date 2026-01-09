@@ -8,9 +8,20 @@ const serviceRoleKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Use authenticated client if service role key is available (Bypasses RLS for Admin actions)
 // Fallback to public client (might fail due to RLS if not authenticated)
-const supabase = serviceRoleKey 
-  ? createClient(supabaseUrl, serviceRoleKey)
-  : publicSupabase;
+const createServiceRoleClient = () => {
+    if (serviceRoleKey) {
+        return createClient(supabaseUrl, serviceRoleKey, {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false
+            }
+        });
+    }
+    console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY is missing. Falling back to public client (RLS may block actions).");
+    return publicSupabase;
+}
+
+const actionSupabase = createServiceRoleClient();
 
 export const server = {
   signin: defineAction({
@@ -62,6 +73,7 @@ export const server = {
     },
   }),
   signout: defineAction({
+    accept: 'form',
     handler: async (_, context) => {
       context.cookies.delete('sb-access-token', { path: '/' });
       context.cookies.delete('sb-refresh-token', { path: '/' });
@@ -89,7 +101,7 @@ export const server = {
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
           const filePath = `${fileName}`;
 
-          const { error: uploadError } = await supabase.storage
+          const { error: uploadError } = await actionSupabase.storage
             .from('event-images')
             .upload(filePath, input.image);
 
@@ -101,7 +113,7 @@ export const server = {
             });
           }
 
-          const { data: publicData } = supabase.storage
+          const { data: publicData } = actionSupabase.storage
             .from('event-images')
             .getPublicUrl(filePath);
             
@@ -124,14 +136,14 @@ export const server = {
 
         if (input.id) {
           // Update
-          ({ data, error } = await supabase
+          ({ data, error } = await actionSupabase
             .from('events')
             .update(eventData)
             .eq('id', input.id)
             .select());
         } else {
           // Insert
-          ({ data, error } = await supabase
+          ({ data, error } = await actionSupabase
             .from('events')
             .insert([eventData])
             .select());
@@ -156,6 +168,83 @@ export const server = {
           message: 'An unexpected error occurred processing your request.'
         });
       }
+    },
+  }),
+  registerGuest: defineAction({
+    accept: 'form',
+    input: z.object({
+      eventId: z.string(),
+      name: z.string().min(1, "Name is required"),
+      email: z.string().email("Invalid email"),
+    }),
+    handler: async ({ eventId, name, email }) => {
+      // DEBUG: Check env var
+      if (!serviceRoleKey) {
+         console.error("❌ CRITICAL ERROR: SUPABASE_SERVICE_ROLE_KEY is missing/undefined. Registration will likely fail.");
+      }
+
+      // 1. Check for duplicates
+      const { count, error: countError } = await actionSupabase
+        .from('registrations')
+        .select('*', { count: 'exact' })
+        .eq('event_id', eventId)
+        .eq('email', email);
+
+      if (countError) {
+        console.warn('Duplicate Check Warning:', countError);
+        // We will NOT throw here. If the check fails (e.g. permission), 
+        // we'll try to proceed to Insert. 
+        // The unique constraint or logic might still fail there, but it gives us a chance.
+      }
+
+      if (count && count > 0) {
+        throw new ActionError({
+          code: 'CONFLICT',
+          message: 'This email is already registered for this event.'
+        });
+      }
+
+      // 2. Register
+      const { error } = await actionSupabase
+        .from('registrations')
+        .insert([{
+          event_id: eventId,
+          name,
+          email,
+          registration_date: new Date().toISOString()
+        }]);
+
+      if (error) {
+        console.error('Registration Error:', error);
+        throw new ActionError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Registration failed: ${error.message}`
+        });
+      }
+
+      return { success: true };
+    },
+  }),
+  deleteRegistration: defineAction({
+    accept: 'form',
+    input: z.object({
+      registrationId: z.string(),
+    }),
+    handler: async ({ registrationId }) => {
+      const { error } = await actionSupabase
+        .from('registrations')
+        .delete()
+        .eq('id', registrationId);
+
+      if (error) {
+        console.error('Delete Error:', error);
+        throw new ActionError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Deletion failed: ${error.message}`
+        });
+      }
+
+      return { success: true };
     },
   }),
 };
