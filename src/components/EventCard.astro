@@ -1,0 +1,63 @@
+---
+interface Props {
+  event: {
+    id: string;
+    title: string;
+    description: string;
+    date: string;
+    location: string;
+    image_url: string;
+  };
+  isAdmin?: boolean;
+}
+
+const { event, isAdmin = false } = Astro.props;
+
+const dateObj = new Date(event.date);
+const formattedDate = dateObj.toLocaleDateString('es-ES', {
+  weekday: 'long',
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+---
+
+<div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
+  {
+    event.image_url && (
+      <div class="aspect-video w-full overflow-hidden">
+        <img
+          src={event.image_url}
+          alt={event.title}
+          class="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+        />
+      </div>
+    )
+  }
+  <div class="p-4">
+    <div class="flex justify-between items-start">
+        <h2 class="text-xl font-bold text-gray-900 mb-2">{event.title}</h2>
+        {isAdmin && (
+            <div class="flex gap-2">
+                <a href={`/admin/events/${event.id}`} class="bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1 rounded-md text-sm hover:bg-indigo-100 transition shadow-sm">
+                    Ver Participantes
+                </a>
+                <a href={`/admin?edit=${event.id}`} class="bg-white text-gray-600 border border-gray-200 px-3 py-1 rounded-md text-sm hover:bg-gray-50 transition shadow-sm">
+                    Editar
+                </a>
+            </div>
+        )}
+    </div>
+    
+    <p class="text-gray-500 text-sm mb-2 flex items-center">
+      <span class="mr-2">📅</span> {formattedDate}
+    </p>
+    <p class="text-gray-500 text-sm mb-4 flex items-center">
+      <span class="mr-2">📍</span> {event.location}
+    </p>
+    
+    <p class="text-gray-700 line-clamp-3">
+      {event.description}
+    </p>
+  </div>
+</div>

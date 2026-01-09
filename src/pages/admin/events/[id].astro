@@ -1,0 +1,178 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import { createClient } from '@supabase/supabase-js';
+
+const { id } = Astro.params;
+
+if (!id) {
+  return Astro.redirect('/admin');
+}
+
+// Initialize Admin Client to bypass RLS for registrations
+const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL;
+const serviceRoleKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
+const adminSupabase = createClient(supabaseUrl, serviceRoleKey);
+
+// Fetch Event Details
+const { data: event, error: eventError } = await adminSupabase
+  .from('events')
+  .select('*')
+  .eq('id', id)
+  .single();
+
+if (eventError || !event) {
+  console.error("Event not found", eventError);
+  return Astro.redirect('/admin');
+}
+
+// Fetch Participants
+const { data: registrations, error: regError } = await adminSupabase
+  .from('registrations')
+  .select(`
+    registration_date,
+    profiles (full_name, email)
+  `)
+  .eq('event_id', id)
+  .order('registration_date', { ascending: false });
+
+const participants = registrations?.map(reg => ({
+  name: reg.profiles?.full_name || 'N/A',
+  email: reg.profiles?.email || 'N/A',
+  date: new Date(reg.registration_date).toLocaleDateString() + ' ' + new Date(reg.registration_date).toLocaleTimeString(),
+  rawDate: reg.registration_date
+})) || [];
+
+---
+
+<Layout title={`Admin - ${event.title}`}>
+  <main class="min-h-screen bg-[#F0F4F8] py-8 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-5xl mx-auto">
+      
+      <!-- Breadcrumb -->
+      <nav class="flex mb-8" aria-label="Breadcrumb">
+        <ol class="inline-flex items-center space-x-1 md:space-x-3">
+          <li class="inline-flex items-center">
+            <a href="/admin" class="inline-flex items-center text-sm font-medium text-gray-700 hover:text-blue-600">
+              <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path></svg>
+              Admin
+            </a>
+          </li>
+          <li>
+            <div class="flex items-center">
+              <svg class="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg>
+              <span class="ml-1 text-sm font-medium text-gray-500 md:ml-2">Detalles del Evento</span>
+            </div>
+          </li>
+        </ol>
+      </nav>
+
+      <!-- Event Header -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+        <div class="relative h-48 sm:h-64">
+           {event.image_url ? (
+               <img src={event.image_url} alt={event.title} class="w-full h-full object-cover"/>
+           ) : (
+               <div class="w-full h-full bg-slate-100 flex items-center justify-center">
+                   <span class="text-slate-400 font-medium">Sin imagen</span>
+               </div>
+           )}
+           <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
+               <div class="p-6 md:p-8 text-white">
+                   <h1 class="text-3xl font-bold">{event.title}</h1>
+                   <div class="flex items-center gap-4 mt-2 text-sm opacity-90">
+                       <span class="flex items-center gap-1">
+                           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                           {new Date(event.date).toLocaleDateString()} {new Date(event.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                       </span>
+                       <span class="flex items-center gap-1">
+                           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                           {event.location}
+                       </span>
+                   </div>
+               </div>
+           </div>
+        </div>
+        <div class="p-6 md:p-8">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Descripción</h3>
+            <p class="text-gray-700 leading-relaxed max-w-3xl">
+                {event.description || "Sin descripción."}
+            </p>
+            <div class="mt-6 pt-6 border-t border-gray-100 flex justify-end">
+                <a href={`/admin?edit=${event.id}`} class="inline-flex items-center px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 text-sm font-medium transition-colors">
+                    Editar Evento
+                </a>
+            </div>
+        </div>
+      </div>
+
+      <!-- Participants Section -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
+        <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+            <div>
+                <h2 class="text-xl font-bold text-slate-900">Participantes Registrados</h2>
+                <p class="text-slate-500 text-sm mt-1">Total: {participants.length}</p>
+            </div>
+            <button 
+                id="exportBtn"
+                class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={participants.length === 0}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                Exportar CVS
+            </button>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-gray-500">
+                <thead class="bg-gray-50 text-gray-700 uppercase font-semibold text-xs">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 rounded-l-lg">Nombre</th>
+                        <th scope="col" class="px-6 py-3">Email</th>
+                        <th scope="col" class="px-6 py-3 rounded-r-lg">Fecha Registro</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {participants.map((p) => (
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-4 font-medium text-gray-900">{p.name}</td>
+                            <td class="px-6 py-4">{p.email}</td>
+                            <td class="px-6 py-4">{p.date}</td>
+                        </tr>
+                    ))}
+                    {participants.length === 0 && (
+                        <tr>
+                            <td colspan="3" class="px-6 py-12 text-center text-gray-400">
+                                No hay participantes registrados aún.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</Layout>
+
+<script define:vars={{ participants, eventTitle: event.title }}>
+  document.getElementById('exportBtn')?.addEventListener('click', () => {
+      if (!participants || participants.length === 0) return;
+
+      const headers = ['Nombre,Email,Fecha Registro,Fecha Raw'];
+      const rows = participants.map(p => 
+          `"${p.name}","${p.email}","${p.date}","${p.rawDate}"`
+      );
+      
+      const csvContent = "data:text/csv;charset=utf-8," 
+          + headers.join('\n') + '\n' + rows.join('\n');
+          
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `${eventTitle}_participantes.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  });
+</script>
