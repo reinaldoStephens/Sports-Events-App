@@ -1,3 +1,5 @@
-dist
+# .vercelignore
+# We should not ignore dist or .vercel if we want the build artifacts to be uploaded correctly
+# especially when the adapter uses them for the server entry point.
 .astro
-.vercel
+node_modules
