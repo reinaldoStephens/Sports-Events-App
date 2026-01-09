@@ -6,7 +6,12 @@ import tailwindcss from '@tailwindcss/vite';
 
 // https://astro.build/config
 export default defineConfig({
-  adapter: vercel(),
+  adapter: vercel({
+    // Configuración explícita para Vercel serverless
+    webAnalytics: {
+      enabled: false
+    }
+  }),
   output: 'server',
 
   vite: {
