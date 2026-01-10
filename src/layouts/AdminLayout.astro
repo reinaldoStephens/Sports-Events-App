@@ -1,0 +1,140 @@
+---
+import { actions } from 'astro:actions';
+import Layout from './Layout.astro';
+import ToastNotification from '../components/ToastNotification.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<Layout title={title}>
+  <div class="min-h-screen bg-[#F0F4F8] font-sans flex flex-col">
+
+    <!-- Admin Sticky Header -->
+    <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm  rounded-b-2xl h-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
+            <div class="flex justify-between items-center h-full">
+                <!-- Logo Area -->
+                <a href="/admin" class="flex-shrink-0 flex items-center gap-3 hover:opacity-80 transition-opacity" title="Recargar Admin">
+                    <div class="h-10 w-10 sm:h-12 sm:w-12 rounded-full overflow-hidden border-2 border-slate-100 shadow-sm flex-shrink-0">
+                        <img src="/logoJuegosProsaludCCSS.jpg" alt="Logo" class="h-full w-full object-cover scale-110" />
+                    </div>
+                    <div class="text-left">
+                        <h1 class="text-sm font-bold text-slate-900 leading-none">Panel Admin</h1>
+                        <p class="text-[10px] font-semibold text-green-600 tracking-wider uppercase">Juegos Prosalud CCSS</p>
+                    </div>
+                </a>
+                
+                <!-- Mobile Hamburger Toggle Button -->
+                <div class="md:hidden flex items-center">
+                    <label for="admin-menu-toggle" class="w-12 h-12 flex items-center justify-center text-slate-700 cursor-pointer hover:bg-slate-100 rounded-2xl transition-all border border-slate-100 bg-white shadow-sm" aria-label="Abrir Menú">
+                        <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                    </label>
+                </div>
+
+                <!-- Desktop Navigation Area -->
+                <nav class="hidden md:flex items-center gap-6">
+                    <a href="/admin" class="text-sm font-bold text-slate-600 hover:text-green-600 transition-colors">Eventos</a>
+                    <a href="/" class="text-sm font-bold text-slate-600 hover:text-green-600 transition-colors">Vista Pública</a>
+                    <form action={actions.signout} method="POST" class="inline">
+                        <button type="submit" class="text-sm font-bold text-red-500 hover:text-red-700 transition-colors">
+                            Salir
+                        </button>
+                    </form>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Full-Screen Admin Mobile Menu Overlay -->
+    <input type="checkbox" id="admin-menu-toggle" class="hidden peer" />
+    <div class="fixed inset-0 z-[100] invisible pointer-events-none peer-checked:visible peer-checked:pointer-events-auto transition-all md:hidden peer-checked:[&_.menu-backdrop]:opacity-100 peer-checked:[&_.menu-panel]:translate-y-0">
+        <!-- Backdrop fade -->
+        <div class="menu-backdrop absolute inset-0 bg-slate-900/60 backdrop-blur-md opacity-0 transition-opacity duration-300 pointer-events-auto" onclick="document.getElementById('admin-menu-toggle').checked = false"></div>
+        
+        <!-- Menu Panel slide -->
+        <nav class="menu-panel absolute inset-x-0 top-0 bg-white shadow-2xl translate-y-[-100%] transition-transform duration-500 ease-out p-6 pt-24 pb-12 flex flex-col gap-2 rounded-b-[2.5rem] pointer-events-auto">
+            <div class="absolute top-6 right-6">
+                <label for="admin-menu-toggle" class="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer rounded-2xl hover:bg-slate-50 transition-all border border-slate-100">
+                    <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                </label>
+            </div>
+
+            <div class="flex flex-col gap-2 px-2">
+                <a href="/admin" class="text-2xl font-black text-slate-800 hover:text-green-600 py-4 rounded-2xl transition-all hover:translate-x-2" onclick="document.getElementById('admin-menu-toggle').checked = false">Gestión Eventos</a>
+                <a href="/" class="text-2xl font-black text-slate-800 hover:text-green-600 py-4 rounded-2xl transition-all hover:translate-x-2" onclick="document.getElementById('admin-menu-toggle').checked = false">Ver Sitio Público</a>
+                
+                <div class="mt-8 pt-8 border-t border-slate-100">
+                    <form action={actions.signout} method="POST" onsubmit="document.getElementById('admin-menu-toggle').checked = false">
+                        <button type="submit" class="w-full flex items-center justify-center gap-3 px-6 py-5 bg-red-50 text-red-600 rounded-[2rem] text-center font-bold text-lg hover:bg-red-100 active:scale-95 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                            Cerrar Sesión
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </nav>
+    </div>
+
+    <div class="py-6 flex-1 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+      <slot />
+    </div>
+
+    <Footer />
+
+    <ToastNotification />
+  </div>
+</Layout>
+
+<script>
+    const toggle = document.getElementById('admin-menu-toggle') as HTMLInputElement;
+    if (toggle) {
+        toggle.addEventListener('change', () => {
+            if (toggle.checked) {
+                document.body.style.overflow = 'hidden';
+            } else {
+                document.body.style.overflow = '';
+            }
+        });
+    }
+</script>
+
+<style is:global>
+  @reference "../styles/global.css";
+  
+  /* Prevent iOS zoom on focus */
+  @media screen and (max-width: 768px) {
+    input, select, textarea, button {
+        font-size: 16px !important;
+    }
+  }
+
+  /* Admin specific global styles */
+  .modern-form label {
+    @apply block text-sm font-semibold text-slate-700 mb-1;
+  }
+  .modern-form input, .modern-form textarea {
+    @apply w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-600/20 focus:border-green-600 outline-none transition-all bg-slate-50 text-slate-700;
+  }
+
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #cbd5e1;
+  }
+</style>
