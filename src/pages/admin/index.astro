@@ -7,6 +7,11 @@ import ConfirmationModal from '../../components/ConfirmationModal.astro';
 
 // Handle Actions
 const createResult = Astro.getActionResult(actions.createEvent);
+const signoutResult = Astro.getActionResult(actions.signout);
+
+if (signoutResult && !signoutResult.error) {
+  return Astro.redirect('/login');
+}
 
 // Pagination & Filtering
 const page = parseInt(Astro.url.searchParams.get('page') || '1');
