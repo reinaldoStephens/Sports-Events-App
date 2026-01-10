@@ -223,4 +223,41 @@ export const server = {
       return { success: true };
     },
   }),
+  deleteEvent: defineAction({
+    accept: 'form',
+    input: z.object({
+      id: z.string(),
+    }),
+    handler: async ({ id }) => {
+      // First, delete associated registrations to avoid foreign key violation (23503)
+      const { error: regError } = await actionSupabase
+        .from('registrations')
+        .delete()
+        .eq('event_id', id);
+
+      if (regError) {
+        console.error('Delete Event Regs Error:', regError);
+        throw new ActionError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Could not delete event registrations: ${regError.message}`
+        });
+      }
+
+      // Then delete the event
+      const { error } = await actionSupabase
+        .from('events')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Delete Event Error:', error);
+        throw new ActionError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Deletion failed: ${error.message}`
+        });
+      }
+
+      return { success: true };
+    },
+  }),
 };
