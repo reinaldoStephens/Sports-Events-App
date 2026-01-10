@@ -9,6 +9,12 @@ interface Props {
 }
 
 const { title } = Astro.props;
+
+// Handle Sign Out Redirect
+const signoutResult = Astro.getActionResult(actions.signout);
+if (signoutResult && !signoutResult.error) {
+  return Astro.redirect('/login');
+}
 ---
 
 <Layout title={title}>
