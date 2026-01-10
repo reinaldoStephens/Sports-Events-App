@@ -5,6 +5,11 @@ import RegistrationModal from '../../../components/RegistrationModal.astro';
 import ConfirmationModal from '../../../components/ConfirmationModal.astro';
 import { actions } from 'astro:actions';
 
+const signoutResult = Astro.getActionResult(actions.signout);
+if (signoutResult && !signoutResult.error) {
+  return Astro.redirect('/login');
+}
+
 const { id } = Astro.params;
 
 if (!id) {
