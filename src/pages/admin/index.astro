@@ -3,6 +3,7 @@ import { actions } from 'astro:actions';
 import { supabase } from '../../lib/supabase';
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import EventCard from '../../components/EventCard.astro';
+import ConfirmationModal from '../../components/ConfirmationModal.astro';
 
 // Handle Actions
 const createResult = Astro.getActionResult(actions.createEvent);
@@ -238,6 +239,8 @@ const isEditMode = !!eventToEdit;
           )}
         </div>
       </div>
+      
+      <ConfirmationModal />
 </AdminLayout>
 
 <script>
@@ -276,6 +279,50 @@ const isEditMode = !!eventToEdit;
       }
     });
   }
+
+  // Deletion logic
+  const deleteButtons = document.querySelectorAll('.delete-event-btn');
+  deleteButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.currentTarget as HTMLButtonElement;
+      const eventId = target.getAttribute('data-event-id');
+      const eventTitle = target.getAttribute('data-event-title');
+
+      if (!eventId) return;
+
+      window.showConfirm(
+        'Eliminar Evento',
+        `¿Estás seguro de que deseas eliminar el evento "${eventTitle}"? Se borrarán también todos sus participantes. Esta acción no se puede deshacer.`,
+        async () => {
+          target.disabled = true;
+          const originalHTML = target.innerHTML;
+          target.innerHTML = '<svg class="animate-spin w-5 h-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+
+          try {
+            const formData = new FormData();
+            formData.append('id', eventId);
+            
+            const result = await actions.deleteEvent(formData);
+
+            if (!result.error) {
+              window.showToast('Evento y participantes eliminados correctamente.', 'success');
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+            } else {
+              window.showToast('Error al eliminar: ' + (result.error?.message || 'Error desconocido'), 'error');
+              target.disabled = false;
+              target.innerHTML = originalHTML;
+            }
+          } catch (err) {
+            window.showToast('Error de red al intentar eliminar.', 'error');
+            target.disabled = false;
+            target.innerHTML = originalHTML;
+          }
+        }
+      );
+    });
+  });
 </script>
 
 <style>
