@@ -1,27 +1,8 @@
 import { defineAction, ActionError } from 'astro:actions';
 import { z } from 'astro:schema';
-import { createClient } from '@supabase/supabase-js';
-import { supabase as publicSupabase } from '../lib/supabase';
+import { supabase as publicSupabase, getSupabaseAdmin } from '../lib/supabase';
 
-const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL;
-const serviceRoleKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
-
-// Use authenticated client if service role key is available (Bypasses RLS for Admin actions)
-// Fallback to public client (might fail due to RLS if not authenticated)
-const createServiceRoleClient = () => {
-    if (serviceRoleKey) {
-        return createClient(supabaseUrl, serviceRoleKey, {
-            auth: {
-                autoRefreshToken: false,
-                persistSession: false
-            }
-        });
-    }
-    console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY is missing. Falling back to public client (RLS may block actions).");
-    return publicSupabase;
-}
-
-const actionSupabase = createServiceRoleClient();
+const actionSupabase = getSupabaseAdmin();
 
 export const server = {
   signin: defineAction({
@@ -178,11 +159,6 @@ export const server = {
       email: z.string().email("Invalid email"),
     }),
     handler: async ({ eventId, name, email }) => {
-      // DEBUG: Check env var
-      if (!serviceRoleKey) {
-         console.error("❌ CRITICAL ERROR: SUPABASE_SERVICE_ROLE_KEY is missing/undefined. Registration will likely fail.");
-      }
-
       // 1. Check for duplicates
       const { count, error: countError } = await actionSupabase
         .from('registrations')

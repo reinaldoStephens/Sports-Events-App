@@ -1,0 +1,121 @@
+---
+import Layout from './Layout.astro';
+import ToastNotification from '../components/ToastNotification.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<Layout title={title}>
+    <main class="min-h-screen bg-[#F8FAFC] font-sans flex flex-col">
+        
+        <!-- Sticky Navigation Header -->
+        <header class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm rounded-b-2xl h-20">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
+                <div class="flex justify-between items-center h-full">
+                    <!-- Logo Area -->
+                    <a href="/" class="flex-shrink-0 flex items-center gap-3 hover:opacity-80 transition-opacity" title="Recargar">
+                        <div class="h-12 w-12 sm:h-14 sm:w-14 rounded-full overflow-hidden border-2 border-white shadow-sm flex-shrink-0">
+                            <img src="/logoJuegosProsaludCCSS.jpg" alt="Logo" class="h-full w-full object-cover scale-110" />
+                        </div>
+                        <div class="hidden md:block text-left">
+                            <h1 class="text-lg font-bold text-slate-900 leading-none">Juegos Prosalud</h1>
+                            <p class="text-[10px] font-bold text-green-600 tracking-wider uppercase mt-1">Caja Costarricense de Seguro Social</p>
+                        </div>
+                    </a>
+                    
+                    <!-- Mobile Hamburger Toggle Button -->
+                    <div class="md:hidden flex items-center">
+                        <label for="mobile-menu-toggle" class="w-12 h-12 flex items-center justify-center text-slate-700 cursor-pointer hover:bg-slate-100 rounded-2xl transition-all border border-slate-100 bg-white shadow-sm" aria-label="Abrir Menú">
+                            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16m-7 6h7" />
+                            </svg>
+                        </label>
+                    </div>
+
+                    <!-- Desktop Navigation Area -->
+                    <nav class="hidden md:flex items-center gap-8">
+                        <a href="/" class="text-slate-600 hover:text-green-600 font-bold transition-colors">Inicio</a>
+                        <a href="/#eventos" class="text-slate-600 hover:text-green-600 font-bold transition-colors">Calendario</a>
+                        <a href="/login" class="px-6 py-2.5 bg-green-600 text-white rounded-full text-sm font-bold hover:bg-green-700 transition-all shadow-md active:scale-95">
+                            Administración
+                        </a>
+                    </nav>
+                </div>
+            </div>
+        </header>
+
+        <!-- Full-Screen Mobile Menu Overlay -->
+        <input type="checkbox" id="mobile-menu-toggle" class="hidden peer" />
+        <div class="fixed inset-0 z-[100] invisible pointer-events-none peer-checked:visible peer-checked:pointer-events-auto transition-all md:hidden peer-checked:[&_.menu-backdrop]:opacity-100 peer-checked:[&_.menu-panel]:translate-y-0">
+            <!-- Backdrop fade -->
+            <div class="menu-backdrop absolute inset-0 bg-slate-900/60 backdrop-blur-md opacity-0 transition-opacity duration-300 pointer-events-auto" onclick="document.getElementById('mobile-menu-toggle').checked = false"></div>
+            
+            <!-- Menu Panel slide -->
+            <nav class="menu-panel absolute inset-x-0 top-0 bg-white shadow-2xl translate-y-[-100%] transition-transform duration-500 ease-out p-6 pt-24 pb-12 flex flex-col gap-2 rounded-b-[2.5rem] pointer-events-auto">
+                <div class="absolute top-6 right-6">
+                    <label for="mobile-menu-toggle" class="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer rounded-2xl hover:bg-slate-50 transition-all border border-slate-100">
+                        <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </label>
+                </div>
+
+                <div class="flex flex-col gap-2 px-2">
+                    <a href="/" class="text-2xl font-black text-slate-800 hover:text-green-600 py-4 rounded-2xl transition-all hover:translate-x-2" onclick="document.getElementById('mobile-menu-toggle').checked = false">Inicio</a>
+                    <a href="/#eventos" class="text-2xl font-black text-slate-800 hover:text-green-600 py-4 rounded-2xl transition-all hover:translate-x-2" onclick="document.getElementById('mobile-menu-toggle').checked = false">Calendario</a>
+                    
+                    <div class="mt-8 pt-8 border-t border-slate-100">
+                        <a href="/login" class="flex items-center justify-center gap-3 px-6 py-5 bg-green-600 text-white rounded-[2rem] text-center font-bold text-lg hover:bg-green-700 active:scale-95 transition-all shadow-xl shadow-green-900/20" onclick="document.getElementById('mobile-menu-toggle').checked = false">
+                            Acceso Administración
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        </div>
+
+        <div class="flex-1 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+            <slot />
+        </div>
+
+        <Footer />
+
+        <ToastNotification />
+    </main>
+</Layout>
+
+<script>
+    const toggle = document.getElementById('mobile-menu-toggle') as HTMLInputElement;
+    if (toggle) {
+        toggle.addEventListener('change', () => {
+            if (toggle.checked) {
+                document.body.style.overflow = 'hidden';
+            } else {
+                document.body.style.overflow = '';
+            }
+        });
+    }
+</script>
+
+<style is:global>
+    html {
+        scroll-behavior: smooth;
+    }
+    /* Prevent iOS zoom on focus and set mobile font base */
+    @media screen and (max-width: 768px) {
+        input, select, textarea, button {
+            font-size: 16px !important;
+        }
+    }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+        background: #cbd5e1; 
+        border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>

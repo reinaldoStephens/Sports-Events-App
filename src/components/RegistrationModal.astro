@@ -26,39 +26,39 @@ const { eventTitle, eventId } = Astro.props;
     </button>
     
     <div class="text-center mb-6">
-      <h3 class="text-xl font-bold text-gray-900">Registrarse al Evento</h3>
-      <p class="text-sm text-gray-500 mt-1">Completa tus datos para asistir a <span class="font-medium text-blue-600">{eventTitle}</span></p>
+      <h3 class="text-xl font-bold text-slate-900">Registrarse al Evento</h3>
+      <p class="text-sm text-slate-500 mt-1 font-medium">Completa tus datos para asistir a <span class="font-bold text-green-600">{eventTitle}</span></p>
     </div>
 
     <form method="POST" action={actions.registerGuest} class="space-y-4 register-form">
       <input type="hidden" name="eventId" value={eventId} />
       
       <div>
-        <label for={`name-${eventId}`} class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+        <label for={`name-${eventId}`} class="block text-sm font-bold text-slate-700 mb-1">Nombre Completo</label>
         <input 
           type="text" 
           name="name" 
           id={`name-${eventId}`} 
           required 
           placeholder="Juan Pérez"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+          class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500/20 focus:border-green-600 outline-none transition-all font-medium text-slate-700 placeholder-slate-400"
         />
       </div>
 
       <div>
-        <label for={`email-${eventId}`} class="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
+        <label for={`email-${eventId}`} class="block text-sm font-bold text-slate-700 mb-1">Correo Electrónico</label>
         <input 
           type="email" 
           name="email" 
           id={`email-${eventId}`} 
           required 
           placeholder="juan@ejemplo.com"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+          class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500/20 focus:border-green-600 outline-none transition-all font-medium text-slate-700 placeholder-slate-400"
         />
       </div>
 
       <div class="pt-2">
-        <button type="submit" class="w-full bg-slate-900 text-white font-medium py-2 px-4 rounded-lg hover:bg-slate-800 transition shadow-lg shadow-slate-900/20">
+        <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-green-700 transition-all shadow-lg shadow-green-900/10 hover:scale-[1.02] active:scale-95">
           Confirmar Registro
         </button>
       </div>

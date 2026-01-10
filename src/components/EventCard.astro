@@ -36,27 +36,27 @@ const formattedDate = dateObj.toLocaleDateString('es-ES', {
   }
   <div class="p-4">
     <div class="flex justify-between items-start">
-        <h2 class="text-xl font-bold text-gray-900 mb-2">{event.title}</h2>
+        <h2 class="text-xl font-bold text-slate-900 mb-2">{event.title}</h2>
         {isAdmin && (
             <div class="flex gap-2">
-                <a href={`/admin/events/${event.id}`} class="bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1 rounded-md text-sm hover:bg-indigo-100 transition shadow-sm">
+                <a href={`/admin/events/${event.id}`} class="bg-green-50 text-green-700 border border-green-100 px-3 py-1 rounded-md text-sm font-semibold hover:bg-green-100 transition shadow-sm">
                     Ver Participantes
                 </a>
-                <a href={`/admin?edit=${event.id}`} class="bg-white text-gray-600 border border-gray-200 px-3 py-1 rounded-md text-sm hover:bg-gray-50 transition shadow-sm">
+                <a href={`/admin?edit=${event.id}`} class="bg-white text-slate-600 border border-slate-200 px-3 py-1 rounded-md text-sm font-semibold hover:bg-slate-50 transition shadow-sm">
                     Editar
                 </a>
             </div>
         )}
     </div>
     
-    <p class="text-gray-500 text-sm mb-2 flex items-center">
-      <span class="mr-2">📅</span> {formattedDate}
+    <p class="text-slate-600 text-sm mb-2 flex items-center">
+      <span class="mr-2 text-green-600 font-bold">📅</span> {formattedDate}
     </p>
-    <p class="text-gray-500 text-sm mb-4 flex items-center">
-      <span class="mr-2">📍</span> {event.location}
+    <p class="text-slate-600 text-sm mb-4 flex items-center">
+      <span class="mr-2 text-green-600 font-bold">📍</span> {event.location}
     </p>
     
-    <p class="text-gray-700 line-clamp-3">
+    <p class="text-slate-700 line-clamp-3 text-sm leading-relaxed">
       {event.description}
     </p>
   </div>

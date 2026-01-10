@@ -1,8 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+import { getSupabaseAdmin } from './lib/supabase';
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const isDashboard = context.url.pathname.startsWith('/admin');
@@ -15,7 +12,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       return context.redirect('/login');
     }
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = getSupabaseAdmin();
 
     const { data: { user }, error } = await supabase.auth.getUser(accessToken);
 
