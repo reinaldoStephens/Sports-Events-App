@@ -1,0 +1,82 @@
+---
+interface Props {
+  tournament: {
+    id: string;
+    nombre: string;
+    fecha_inicio: string;
+    fecha_fin: string;
+    imagen_portada: string | null;
+  };
+}
+
+const { tournament } = Astro.props;
+---
+
+<a 
+  href={`/torneo/${tournament.id}`}
+  class="group relative bg-white rounded-[2.5rem] overflow-hidden shadow-2xl shadow-slate-200/50 transition-all duration-700 hover:-translate-y-4 hover:shadow-blue-500/20 flex flex-col h-full border border-slate-100"
+>
+  <!-- Card Header / Image Area -->
+  <div class="h-64 relative overflow-hidden">
+    {tournament.imagen_portada ? (
+      <img 
+        src={tournament.imagen_portada} 
+        alt={tournament.nombre} 
+        class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+      />
+    ) : (
+      <div class="w-full h-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-indigo-900/20"></div>
+        <div class="text-slate-800 font-black text-9xl opacity-10 select-none">{tournament.nombre[0]}</div>
+      </div>
+    )}
+    
+    <!-- Status Badge -->
+    <div class="absolute top-6 left-6">
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-blue-600/90 backdrop-blur-md rounded-xl text-white shadow-lg">
+            <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+            <span class="text-[9px] font-black uppercase tracking-[0.2em]">Official Event</span>
+        </div>
+    </div>
+
+    <!-- Overlay Gradient -->
+    <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent"></div>
+    
+    <div class="absolute bottom-6 left-8 right-8">
+        <h3 class="text-3xl font-black text-white uppercase tracking-tighter leading-none group-hover:text-blue-400 transition-colors duration-500">{tournament.nombre}</h3>
+    </div>
+  </div>
+
+  <!-- Content Area -->
+  <div class="p-8 flex-1 flex flex-col justify-between bg-white relative">
+    <div class="flex items-center justify-between text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </div>
+            <span>{new Date(tournament.fecha_inicio).toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        </div>
+        <div class="w-4 h-px bg-slate-100"></div>
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <span>{new Date(tournament.fecha_fin).toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        </div>
+    </div>
+
+    <!-- Action Hint -->
+    <div class="mt-8 pt-8 border-t border-slate-50 flex items-center justify-between group/link">
+        <span class="text-xs font-black text-slate-900 uppercase tracking-widest group-hover:text-blue-600 transition-colors">Explorar Competencia</span>
+        <div class="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500 transform group-hover:rotate-45">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+        </div>
+    </div>
+  </div>
+</a>

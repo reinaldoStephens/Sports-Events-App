@@ -1,0 +1,127 @@
+---
+import '../styles/global.css';
+import ToastNotification from '../components/ToastNotification.astro';
+import ConfirmationModal from '../components/ConfirmationModal.astro';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | Admin Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;900&display=swap" rel="stylesheet" />
+    <style is:global>
+        :root {
+            --primary: #2563eb;
+            --primary-glow: rgba(37, 99, 235, 0.15);
+        }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f8fafc;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen antialiased overflow-x-hidden">
+    <!-- Premium Top Header -->
+    <header class="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100 flex items-center justify-center p-4">
+        <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10 h-20 flex justify-between items-center bg-white rounded-[2rem] shadow-2xl shadow-slate-200/50 border border-slate-100">
+            <!-- Logo Area -->
+            <a href="/admin/dashboard" class="flex items-center gap-4 group" title="Admin Dashboard">
+                <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform duration-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <div class="hidden sm:block">
+                    <h1 class="text-xl font-black text-slate-900 leading-none tracking-tighter uppercase">Admin<br/><span class="text-blue-600">Panel</span></h1>
+                </div>
+            </a>
+            
+            <!-- Desktop Navigation Area -->
+            <nav class="hidden md:flex items-center gap-10">
+                <a href="/admin/dashboard" class="text-sm font-black uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors">Dashboard</a>
+                <a href="/admin/equipos" class="text-sm font-black uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors">Equipos</a>
+                <a href="/" class="text-sm font-black uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors">Vista Pública</a>
+                
+                <form method="POST" action="/api/auth/signout">
+                    <button type="submit" class="px-8 py-3.5 bg-red-500/10 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-red-500 hover:text-white transition-all shadow-xl shadow-red-500/10 active:scale-95">
+                        Cerrar Sesión
+                    </button>
+                </form>
+            </nav>
+
+            <!-- Mobile Menu Toggle -->
+            <div class="md:hidden flex items-center gap-3">
+                <label for="admin-menu-toggle" class="w-12 h-12 flex items-center justify-center text-slate-900 cursor-pointer bg-slate-50 border border-slate-100 rounded-2xl active:scale-90 transition-all shadow-inner" aria-label="Menu">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <!-- Full-Screen Admin Mobile Menu Overlay -->
+    <input type="checkbox" id="admin-menu-toggle" class="hidden peer" />
+    <div class="fixed inset-0 z-[100] invisible pointer-events-none peer-checked:visible peer-checked:pointer-events-auto transition-all md:hidden">
+        <!-- Backdrop fade -->
+        <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-md opacity-0 peer-checked:opacity-100 transition-opacity duration-500" onclick="document.getElementById('admin-menu-toggle').checked = false"></div>
+        
+        <!-- Menu Panel slide -->
+        <nav class="absolute inset-x-6 top-6 bg-white shadow-2xl translate-y-[-120%] peer-checked:translate-y-0 transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] p-10 flex flex-col gap-8 rounded-[3rem]">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    </div>
+                    <h2 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Admin Panel</h2>
+                </div>
+                <label for="admin-menu-toggle" class="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer rounded-2xl hover:bg-slate-50 border border-slate-100 transition-all">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                </label>
+            </div>
+
+            <div class="flex flex-col gap-1">
+                <a href="/admin/dashboard" class="text-3xl font-black text-slate-900 uppercase tracking-tighter py-4 hover:translate-x-2 transition-transform duration-300" onclick="document.getElementById('admin-menu-toggle').checked = false">Dashboard</a>
+                <a href="/" class="text-3xl font-black text-slate-900 uppercase tracking-tighter py-4 hover:translate-x-2 transition-transform duration-300" onclick="document.getElementById('admin-menu-toggle').checked = false">Vista Pública</a>
+                
+                <div class="mt-6 pt-10 border-t border-slate-100">
+                    <form method="POST" action="/api/auth/signout" onsubmit="document.getElementById('admin-menu-toggle').checked = false">
+                        <button type="submit" class="w-full flex items-center justify-center gap-4 px-8 py-6 bg-red-500 text-white rounded-[2rem] text-center font-black uppercase tracking-widest text-xs hover:bg-red-600 active:scale-95 transition-all shadow-2xl shadow-red-500/20">
+                            Cerrar Sesión
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3 3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </nav>
+    </div>
+
+    <!-- Main Content -->
+    <main class="min-h-screen pt-10 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+        <slot />
+    </main>
+
+    <script>
+        const toggle = document.getElementById('admin-menu-toggle') as HTMLInputElement;
+        if (toggle) {
+            toggle.addEventListener('change', () => {
+                if (toggle.checked) {
+                    document.body.style.overflow = 'hidden';
+                } else {
+                    document.body.style.overflow = '';
+                }
+            });
+        }
+    </script>
+    <ToastNotification />
+    <ConfirmationModal />
+</body>
+</html>

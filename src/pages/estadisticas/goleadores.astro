@@ -1,0 +1,122 @@
+---
+import PublicLayout from '../../layouts/PublicLayout.astro';
+import { supabase } from '../../lib/supabase';
+
+// 1. Fetch all goals
+const { data: goles, error: goalsError } = await supabase
+  .from('goles')
+  .select('jugador_id');
+
+// 2. Aggregate goals per player
+const goalCounts: Record<string, number> = {};
+if (goles) {
+  goles.forEach((g: any) => {
+    if (g.jugador_id) {
+         goalCounts[g.jugador_id] = (goalCounts[g.jugador_id] || 0) + 1;
+    }
+  });
+}
+
+// 3. Sort by goals (descending)
+const sortedScorers = Object.entries(goalCounts)
+  .sort(([, countA], [, countB]) => countB - countA)
+  .slice(0, 50); // Limit to top 50
+
+// 4. Fetch player details
+const playerIds = sortedScorers.map(([id]) => id);
+let playersMap: Record<string, any> = {};
+
+if (playerIds.length > 0) {
+    const { data: players } = await supabase
+        .from('deportistas')
+        .select(`
+            id, 
+            nombre, 
+            posicion,
+            equipo:equipos(id, nombre, logo_url)
+        `)
+        .in('id', playerIds);
+    
+    if (players) {
+        players.forEach((p: any) => {
+            playersMap[p.id] = p;
+        });
+    }
+}
+
+// 5. Combine data for view
+const topScorers = sortedScorers.map(([id, goalsCount]) => {
+    const player = playersMap[id];
+    if (!player) return null;
+    return {
+        ...player,
+        goals: goalsCount
+    };
+}).filter(Boolean); // Remove nulls
+---
+
+<PublicLayout title="Goleadores">
+    <div class="bg-slate-900 py-20 px-4 text-center text-white relative overflow-hidden">
+        <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&q=80')] bg-cover bg-center opacity-10"></div>
+        <div class="relative z-10 max-w-4xl mx-auto space-y-4">
+            <h1 class="text-4xl md:text-6xl font-black uppercase tracking-tighter">Tabla de Goleadores</h1>
+            <p class="text-slate-400 text-lg md:text-xl font-medium max-w-2xl mx-auto">Los máximos anotadores de la temporada.</p>
+        </div>
+    </div>
+
+    <div class="max-w-5xl mx-auto px-4 py-16">
+        {topScorers.length > 0 ? (
+            <div class="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-100 text-xs font-black uppercase tracking-widest text-slate-400">
+                                <th class="p-6 text-center w-20">#</th>
+                                <th class="p-6">Jugador</th>
+                                <th class="p-6">Equipo</th>
+                                <th class="p-6 text-center">Goles</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            {topScorers.map((scorer: any, index: number) => (
+                                <tr class="hover:bg-blue-50/30 transition-colors group">
+                                    <td class="p-6 text-center">
+                                        <div class={`w-8 h-8 mx-auto flex items-center justify-center rounded-full font-black text-sm
+                                            ${index === 0 ? 'bg-yellow-100 text-yellow-600' : 
+                                              index === 1 ? 'bg-slate-100 text-slate-600' : 
+                                              index === 2 ? 'bg-orange-100 text-orange-600' : 'text-slate-400'}`}>
+                                            {index + 1}
+                                        </div>
+                                    </td>
+                                    <td class="p-6">
+                                        <div class="font-bold text-slate-900 text-lg">{scorer.nombre}</div>
+                                        <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">{scorer.posicion || 'Jugador'}</div>
+                                    </td>
+                                    <td class="p-6">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center text-slate-300 font-black text-xs">
+                                                {scorer.equipo?.logo_url ? <img src={scorer.equipo.logo_url} class="w-full h-full object-contain p-1" /> : scorer.equipo?.nombre[0]}
+                                            </div>
+                                            <span class="font-bold text-slate-600 text-sm">{scorer.equipo?.nombre}</span>
+                                        </div>
+                                    </td>
+                                    <td class="p-6 text-center">
+                                        <span class="text-2xl font-black text-slate-900 tracking-tighter group-hover:text-blue-600 transition-colors">{scorer.goals}</span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        ) : (
+            <div class="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-white mb-6 shadow-sm">
+                    <svg class="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                </div>
+                <h2 class="text-xl font-black text-slate-300 uppercase tracking-widest">Sin Goles Registrados</h2>
+                <p class="text-slate-400 mt-2 text-sm">Aún no hay estadísticas de goleadores.</p>
+            </div>
+        )}
+    </div>
+</PublicLayout>

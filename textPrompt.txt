@@ -1,0 +1,46 @@
+Recomendaciones para una plataforma de torneos estilo ESPN (aplicables a fútbol y otros deportes)
+A continuación las áreas clave y objetos de datos que te recomiendo considerar para un producto robusto y escalable.
+
+Modelo de datos y relaciones
+Torneos: soporte para diferentes tipos (liga, eliminación simple, grupos + eliminación).
+Equipos y Deportistas: equipos con miembros; deportistas (jugadores) con historial, número, posición y estadísticas.
+Inscripciones: relación torneo ↔ equipo (ya la tenemos).
+Partidos: fecha/hora, lugar (estadio), árbitros, estado (programado, en curso, finalizado), resultado y eventos (goles, tarjetas, sustituciones).
+Jornadas/Fechas (rounds): agrupar partidos por jornada o etapa del torneo.
+Clasificación/tabla: calculada desde resultados (puntos, GF, GC, diferencia, fair-play, etc.) y guardada o computada on-demand.
+Estadísticas: por jugador, por equipo, por torneo (goles, asistencias, minutos jugados, tarjetas).
+Roles y permisos: admin global, organizador de torneo, manager de equipo, entrenador, periodista/editor, usuario normal.
+Noticias y contenidos: artículos, categorías, autores, imágenes, fechas de publicación, drafts y SEO meta.
+Multimedia: almacenamiento de imágenes, vídeos, y thumbnails (usa Supabase Storage con políticas por bucket).
+Comentarios y reacciones: para noticias y eventos (moderación y RLS).
+Notificaciones: push/in-app para resultados, cambios de horario, nueva noticia.
+Funcionalidades en la UX
+Feed principal con noticias destacadas y eventos recientes.
+Página de torneo con calendario, tabla de posiciones, y estadísticas.
+Página de equipo con plantilla (plantel), resultados, próximos partidos y noticias relacionadas.
+Perfil de jugador con estadísticas históricas y comparadores.
+Sistema de búsqueda y filtros (por torneo, equipo, jugador, fecha).
+Suscripciones: alertas por equipo/torneo y newsletters.
+Multi-deporte: modelar deportes con reglas configurables (puntos por victoria/empate, duración del partido, número de suplentes, etc.).
+Realtime y actualizaciones en vivo
+Realtime para marcador en vivo, eventos de partido (goles, tarjetas, sustituciones), y notificaciones.
+Uso de Realtime broadcast + triggers en la DB (recomendado).
+Canales privados para organizadores y managers.
+Internacionalización y localización
+Soporte para múltiples idiomas y zonas horarias (fechas en locale del usuario).
+Formatos de estadísticas por región si aplica.
+Rendimiento y escalabilidad
+Indexar columnas usadas en filtros y políticas RLS (user_id, torneo_id, equipo_id, partido_id).
+Cachear resultados pesados (tabla de posiciones) y regenerar con triggers o jobs.
+Paginación eficiente (cursor-based) para listas grandes (noticias, partidos).
+Seguridad y RLS
+Habilitar RLS por defecto en tablas sensibles (inscripciones, partidos, mensajes).
+Usar claims en JWT para roles y organización/tenant si multitenant.
+Revocar ejecución de funciones SECURITY DEFINER a roles públicos.
+Operaciones y mantenimiento
+Logs de cambios y auditoría (quién cambió qué y cuándo).
+Tareas programadas (cron jobs) para recalcular tablas, generar resúmenes y limpiar contenido.
+Backups y migraciones (usa supabase_migrations).
+SEO y contenidos
+URLs amigables para equipos, jugadores y notas (slugs).
+Metadatos Open Graph para compartir en redes.

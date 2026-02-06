@@ -1,0 +1,73 @@
+---
+interface Props {
+  match: {
+    id: string;
+    equipo_local_id: string | null;
+    equipo_visitante_id: string | null;
+    puntos_local: number | null;
+    puntos_visitante: number | null;
+    fecha_partido: string | null;
+    estado_partido: 'pendiente' | 'en_curso' | 'finalizado';
+    local?: { nombre: string; logo_url: string | null };
+    visitante?: { nombre: string; logo_url: string | null };
+  };
+}
+
+const { match } = Astro.props;
+
+const isFinished = match.estado_partido === 'finalizado';
+const isLive = match.estado_partido === 'en_curso';
+
+const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'TBD';
+    return new Date(dateString).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+};
+---
+
+<div class="bg-white rounded-[2rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 hover:shadow-blue-500/10 transition-shadow">
+    <div class="flex justify-between items-center mb-6">
+        <span class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+            {isFinished ? 'Finalizado' : isLive ? 'En Vivo' : formatDate(match.fecha_partido)}
+        </span>
+        {isLive && <span class="flex h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>}
+    </div>
+
+    <div class="flex items-center justify-between gap-4">
+        <!-- Local Team -->
+        <div class="flex flex-col items-center gap-3 flex-1">
+             {match.local?.logo_url ? (
+                <img src={match.local.logo_url} alt={match.local.nombre} class="w-16 h-16 object-contain" />
+            ) : (
+                <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 font-black text-xl">
+                    {match.local?.nombre?.[0] || 'L'}
+                </div>
+            )}
+            <span class="text-sm font-bold text-slate-800 text-center leading-tight">{match.local?.nombre || 'Local'}</span>
+        </div>
+
+        <!-- Score / VS -->
+        <div class="flex flex-col items-center justify-center w-20">
+            {isFinished || isLive ? (
+                <div class="flex items-center gap-2">
+                    <span class={`text-4xl font-black ${match.puntos_local! > match.puntos_visitante! ? 'text-slate-900' : 'text-slate-300'}`}>{match.puntos_local}</span>
+                    <span class="text-slate-300 font-light">-</span>
+                    <span class={`text-4xl font-black ${match.puntos_visitante! > match.puntos_local! ? 'text-slate-900' : 'text-slate-300'}`}>{match.puntos_visitante}</span>
+                </div>
+            ) : (
+                 <span class="text-2xl font-black text-slate-200 uppercase">VS</span>
+            )}
+        </div>
+
+        <!-- Visitante Team -->
+        <div class="flex flex-col items-center gap-3 flex-1">
+             {match.visitante?.logo_url ? (
+                <img src={match.visitante.logo_url} alt={match.visitante.nombre} class="w-16 h-16 object-contain" />
+            ) : (
+                <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 font-black text-xl">
+                    {match.visitante?.nombre?.[0] || 'V'}
+                </div>
+            )}
+            <span class="text-sm font-bold text-slate-800 text-center leading-tight">{match.visitante?.nombre || 'Visitante'}</span>
+        </div>
+    </div>
+</div>

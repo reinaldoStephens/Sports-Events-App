@@ -1,0 +1,271 @@
+---
+interface Props {
+  currentImage?: string | null;
+  entityId: string;
+  entityType: 'team' | 'tournament'; // To know which table to update
+  fallbackInitial: string;
+  className?: string;
+  bucket?: string; // Default to 'logos'
+}
+
+const { currentImage, entityId, entityType, fallbackInitial, className = "", bucket = 'logos' } = Astro.props;
+---
+
+<div class={`relative group cursor-pointer overflow-hidden ${className}`}>
+  <!-- Checkbox for "Loading" state toggle -->
+  <input type="checkbox" id={`loading-${entityId}`} class="hidden peer" disabled />
+
+  <!-- Image Display -->
+  <div class="w-full h-full relative">
+    {currentImage ? (
+      <img 
+        id={`preview-${entityId}`} 
+        src={currentImage} 
+        alt="Logo" 
+        class="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-105" 
+      />
+    ) : (
+      <div id={`fallback-${entityId}`} class="w-full h-full flex items-center justify-center font-black text-4xl text-slate-300 bg-slate-100">
+        {fallbackInitial}
+      </div>
+    )}
+    
+    <!-- Hidden Preview Image for JS update -->
+    <img id={`js-preview-${entityId}`} class="hidden w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-105" />
+  </div>
+
+  <!-- Overlay -->
+  <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-4 z-10 pointer-events-none">
+    <!-- Change Button -->
+    <div class="text-white flex flex-col items-center gap-1">
+      <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      <span class="text-xs font-bold uppercase tracking-wider">Cambiar</span>
+    </div>
+
+    <!-- Delete Button (Only if image exists) -->
+    <button 
+        id={`delete-btn-${entityId}`}
+        type="button"
+        class={`p-2 bg-white/20 hover:bg-red-500/80 rounded-full text-white transition-all backdrop-blur-sm pointer-events-auto ${!currentImage ? 'hidden' : ''}`}
+        title="Eliminar imagen"
+        onclick="event.preventDefault(); event.stopPropagation();"
+    >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+    </button>
+  </div>
+
+  <!-- Loading State Overlay -->
+  <div class="absolute inset-0 bg-white/80 hidden peer-checked:flex items-center justify-center z-20">
+    <svg class="w-8 h-8 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+  </div>
+
+  <input 
+    type="file" 
+    id={`file-${entityId}`} 
+    accept="image/*" 
+    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-0"
+    data-entity-id={entityId}
+    data-entity-type={entityType}
+    data-bucket={bucket}
+  />
+</div>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  // Inline compression function to avoid module import issues
+  async function compressImage(file: File, quality = 0.8, maxWidth = 800): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    reject(new Error('Canvas context not available'));
+                    return;
+                }
+                
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('Compression failed'));
+                        }
+                    },
+                    'image/webp',
+                    quality
+                );
+            };
+            img.onerror = (error) => reject(error);
+        };
+        reader.onerror = (error) => reject(error);
+    });
+  }
+
+  // Setup all file inputs with smart upload functionality
+  document.querySelectorAll<HTMLInputElement>('input[type="file"][data-entity-id]').forEach(fileInput => {
+    const entityId = fileInput.dataset.entityId!;
+    const entityType = fileInput.dataset.entityType as 'team' | 'tournament';
+    const bucket = fileInput.dataset.bucket || 'logos';
+    
+    // UI References
+    const loadingCheckbox = document.getElementById(`loading-${entityId}`) as HTMLInputElement;
+    const previewImg = document.getElementById(`preview-${entityId}`) as HTMLImageElement;
+    const jsPreviewImg = document.getElementById(`js-preview-${entityId}`) as HTMLImageElement;
+    const fallbackDiv = document.getElementById(`fallback-${entityId}`);
+    const deleteBtn = document.getElementById(`delete-btn-${entityId}`);
+
+    // --- UPLOAD LOGIC ---
+    fileInput.addEventListener('change', async (e) => {
+      const target = e.target as HTMLInputElement;
+      if (!target.files || target.files.length === 0) return;
+
+      const file = target.files[0];
+      
+      // Start Loading
+      if (loadingCheckbox) loadingCheckbox.checked = true;
+
+      try {
+        console.log('[SmartImage] Starting upload process...');
+        console.log('[SmartImage] Original file:', file.name, file.size, 'bytes');
+        
+        // 1. Compress
+        console.log('[SmartImage] Compressing image (Aggressive)...');
+        // Optimized: Quality 0.7, Max Width 300px (Enough for 2x Retina on 128px containers)
+        const compressedBlob = await compressImage(file, 0.7, 300);
+        console.log('[SmartImage] Compressed to:', compressedBlob.size, 'bytes');
+        
+        // 2. Prepare Form Data
+        const formData = new FormData();
+        formData.append('file', compressedBlob, 'image.webp');
+        formData.append('bucket', bucket);
+        formData.append('entityId', entityId);
+        formData.append('entityType', entityType);
+        
+        console.log('[SmartImage] FormData prepared:', {
+          bucket,
+          entityId,
+          entityType,
+          fileSize: compressedBlob.size
+        });
+
+        // 3. Upload
+        console.log('[SmartImage] Calling uploadSmartImage action...');
+        const result = await actions.uploadSmartImage(formData);
+        console.log('[SmartImage] Action result:', result);
+
+        if (result.error) {
+             console.error('[SmartImage] Upload failed:', result.error);
+             alert(`Error: ${result.error.message}`);
+             if (window.showToast) window.showToast(result.error.message, 'error');
+        } else {
+             // Success - Update UI
+             const newUrl = result.data.url;
+             console.log('[SmartImage] Upload successful! New URL:', newUrl);
+             
+             // Update main image
+             if (previewImg) {
+                 previewImg.src = newUrl + '?t=' + Date.now(); // Cache bust
+                 previewImg.classList.remove('hidden');
+             } else if (jsPreviewImg) {
+                 // If we were showing fallback
+                 jsPreviewImg.src = newUrl + '?t=' + Date.now();
+                 jsPreviewImg.classList.remove('hidden');
+                 if (fallbackDiv) fallbackDiv.classList.add('hidden');
+             }
+             // Show delete button
+             if (deleteBtn) deleteBtn.classList.remove('hidden');
+             
+             if (window.showToast) window.showToast('Imagen actualizada correctamente', 'success');
+        }
+
+      } catch (err: any) {
+        console.error('[SmartImage] Error:', err);
+        alert(`Error al subir imagen: ${err.message || err}`);
+        if (window.showToast) window.showToast('Error al procesar la imagen: ' + (err.message || ''), 'error');
+      } finally {
+        // Stop Loading
+        if (loadingCheckbox) loadingCheckbox.checked = false;
+        // Reset input
+        target.value = '';
+      }
+    });
+
+    // --- DELETE LOGIC ---
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const deleteAction = async () => {
+                if (loadingCheckbox) loadingCheckbox.checked = true;
+
+                try {
+                    const formData = new FormData();
+                    formData.append('bucket', bucket);
+                    formData.append('entityId', entityId);
+                    formData.append('entityType', entityType);
+
+                    const result = await actions.deleteSmartImage(formData);
+                    
+                    if (result.error) {
+                        alert('Error al eliminar: ' + result.error.message);
+                        if (window.showToast) window.showToast('Error al eliminar: ' + result.error.message, 'error');
+                    } else {
+                        // Reset UI to fallback
+                        if (previewImg) previewImg.classList.add('hidden');
+                        if (jsPreviewImg) jsPreviewImg.classList.add('hidden');
+                        if (fallbackDiv) fallbackDiv.classList.remove('hidden');
+                        
+                        // Hide delete btn
+                        deleteBtn.classList.add('hidden');
+                        
+                        if (window.showToast) window.showToast('Imagen eliminada', 'success');
+                    }
+                } catch (err: any) {
+                    console.error(err);
+                    if (window.showToast) window.showToast('Error: ' + err.message, 'error');
+                } finally {
+                    if (loadingCheckbox) loadingCheckbox.checked = false;
+                }
+            };
+
+            if (window.showConfirm) {
+                window.showConfirm(
+                    'Eliminar Imagen',
+                    '¿Estás seguro de que deseas eliminar esta imagen? Esta acción es irreversible.',
+                    deleteAction
+                );
+            } else {
+                if (confirm('¿Seguro que quieres eliminar esta imagen?')) {
+                    deleteAction();
+                }
+            }
+        });
+    }
+  });
+</script>

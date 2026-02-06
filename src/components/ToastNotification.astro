@@ -89,4 +89,17 @@
           }, 300);
       }, 3000);
   };
-</script>
+
+  // Check for toast params on load
+  const urlParams = new URLSearchParams(window.location.search);
+  const msg = urlParams.get('msg');
+  const type = urlParams.get('type') as 'success' | 'error' | null;
+  
+  if (msg) {
+      window.showToast(msg, type || 'success');
+      // Clean up params so it doesn't show again on simple refresh (optional but recommended)
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('msg');
+      newUrl.searchParams.delete('type');
+      window.history.replaceState({}, '', newUrl.toString());
+  }

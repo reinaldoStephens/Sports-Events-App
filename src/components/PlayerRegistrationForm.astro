@@ -1,0 +1,368 @@
+---
+/**
+ * Player Registration Form Component
+ * Form for adding players with cédula validation
+ */
+
+interface Props {
+  equipoId: string;
+  showDorsal?: boolean;
+  // Edit mode props
+  editMode?: boolean;
+  playerData?: {
+    numero_cedula: string;
+    nombre: string;
+    nombre_deportivo?: string | null;
+    fecha_nacimiento?: string | null;
+    posicion?: string | null;
+    dorsal?: number | null;
+  };
+  redirectUrl?: string;
+}
+
+const { equipoId, showDorsal = true, editMode = false, playerData, redirectUrl } = Astro.props;
+const isEditing = Boolean(editMode && playerData);
+---
+
+<form 
+  id="player-registration-form" 
+  class="player-registration-form bg-white rounded-lg shadow-md p-6"
+  method="POST"
+  data-redirect-url={redirectUrl}
+>
+  <h3 class="text-xl font-bold text-slate-800 mb-6">
+    {isEditing ? 'Editar Jugador' : 'Registrar Nuevo Jugador'}
+  </h3>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <!-- Número de Cédula -->
+    <div class="form-group">
+      <label for="numero_cedula" class="block text-sm font-semibold text-slate-700 mb-2">
+        Número de Cédula *
+      </label>
+      <input
+        type="text"
+        id="numero_cedula"
+        name="numero_cedula"
+        value={isEditing ? playerData.numero_cedula : ''}
+        disabled={isEditing}
+        readonly={isEditing}
+        required
+        pattern="[0-9]{9,12}"
+        placeholder="1-0234-0567 o 102340567"
+        class={`w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${isEditing ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}`}
+      />
+      {isEditing && (
+        <p class="mt-2 text-xs text-amber-600 flex items-center gap-1">
+          <span>⚠️</span>
+          <span>La cédula no se puede cambiar. Si es incorrecta, elimina este registro.</span>
+        </p>
+      )}
+      <p class="text-xs text-slate-500 mt-1">
+        9 dígitos para cédula nacional, 11-12 para DIMEX
+      </p>
+      {isEditing && <input type="hidden" name="numero_cedula" value={playerData.numero_cedula} />}
+    </div>
+
+    <!-- Nombre Completo -->
+    <div class="form-group">
+      <label for="nombre" class="block text-sm font-semibold text-slate-700 mb-2">
+        Nombre Completo *
+      </label>
+      <input
+        type="text"
+        id="nombre"
+        name="nombre"
+        value={isEditing ? playerData.nombre : ''}
+        required
+        minlength="3"
+        placeholder="Nombre legal completo"
+        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      />
+      <p class="text-xs text-slate-500 mt-1">
+        Según aparece en la cédula
+      </p>
+    </div>
+
+
+
+    <!-- Fecha de Nacimiento -->
+    <div class="form-group">
+      <label for="fecha_nacimiento" class="block text-sm font-semibold text-slate-700 mb-2">
+        Fecha de Nacimiento
+        <span class="text-xs font-normal text-slate-500">(Opcional)</span>
+      </label>
+      <input
+        type="date"
+        id="fecha_nacimiento"
+        name="fecha_nacimiento"
+        value={isEditing ? playerData.fecha_nacimiento : ''}
+        max={new Date().toISOString().split('T')[0]}
+        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      />
+      <p class="text-xs text-slate-500 mt-1" id="edad-display">
+        Edad: -
+      </p>
+    </div>
+
+    <!-- Posición -->
+    <div class="form-group">
+      <label for="posicion" class="block text-sm font-semibold text-slate-700 mb-2">
+        Posición
+      </label>
+      <select
+        id="posicion"
+        name="posicion"
+        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      >
+        <option value="">Seleccione una posición</option>
+        <option value="Portero" selected={isEditing && playerData.posicion === 'Portero'}>Portero</option>
+        <option value="Defensa" selected={isEditing && playerData.posicion === 'Defensa'}>Defensa</option>
+        <option value="Mediocampista" selected={isEditing && playerData.posicion === 'Mediocampista'}>Mediocampista</option>
+        <option value="Delantero" selected={isEditing && playerData.posicion === 'Delantero'}>Delantero</option>
+      </select>
+    </div>
+
+    <!-- Dorsal -->
+    {showDorsal && (
+      <div class="form-group">
+        <label for="dorsal" class="block text-sm font-semibold text-slate-700 mb-2">
+          Dorsal
+          <span class="text-xs font-normal text-slate-500">(1-99)</span>
+        </label>
+        <input
+          type="number"
+          id="dorsal"
+          name="dorsal"
+          value={isEditing ? (playerData.dorsal || '') : ''}
+          min="1"
+          max="99"
+          placeholder="Número de camiseta"
+          class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p class="text-xs text-slate-500 mt-1">
+          Debe ser único en el equipo
+        </p>
+      </div>
+    )}
+  </div>
+
+  <!-- Hidden fields for edit mode -->
+  {isEditing && (
+    <input type="hidden" name="numero_cedula" value={playerData.numero_cedula} />
+  )}
+  <input type="hidden" name="equipo_id" value={equipoId} />
+
+  <!-- Error Display -->
+  <div id="error-message" class="hidden mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+    <p class="text-red-800 font-medium"></p>
+  </div>
+
+  <!-- Success Display -->
+  <div id="success-message" class="hidden mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+    <p class="text-green-800 font-medium">✓ Jugador agregado exitosamente</p>
+  </div>
+
+  <!-- Submit Button -->
+  <div class="mt-6 flex gap-4">
+    <button
+      type="submit"
+      class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+    >
+      {isEditing ? 'Actualizar Jugador' : 'Agregar Jugador'}
+    </button>
+    <button
+      type="button"
+      onclick={isEditing ? `window.location.href = '${redirectUrl || window.location.pathname}'` : "document.getElementById('player-registration-form').reset()"}
+      class="px-6 py-3 border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors"
+    >
+      {isEditing ? 'Cancelar Edición' : 'Limpiar'}
+    </button>
+  </div>
+</form>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  // Calculate and display age from birth date
+  const fechaNacInput = document.getElementById('fecha_nacimiento') as HTMLInputElement;
+  const edadDisplay = document.getElementById('edad-display');
+
+  if (fechaNacInput && edadDisplay) {
+    fechaNacInput.addEventListener('change', () => {
+      const birthDate = new Date(fechaNacInput.value);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      
+      edadDisplay.textContent = `Edad: ${age} años`;
+    });
+  }
+
+  // Form validation
+  const cedulaInput = document.getElementById('numero_cedula') as HTMLInputElement;
+  
+  if (cedulaInput) {
+    cedulaInput.addEventListener('input', () => {
+      // Remove non-numeric characters
+      const cleaned = cedulaInput.value.replace(/\D/g, '');
+      
+      // Validate length
+      if (cleaned.length === 9 || (cleaned.length >= 11 && cleaned.length <= 12)) {
+        cedulaInput.setCustomValidity('');
+      } else if (cleaned.length > 0) {
+        cedulaInput.setCustomValidity('Cédula debe tener 9 dígitos o DIMEX 11-12 dígitos');
+      }
+    });
+  }
+
+  // Form submission using Astro actions
+  const form = document.getElementById('player-registration-form') as HTMLFormElement;
+  const errorDiv = document.getElementById('error-message');
+  const successDiv = document.getElementById('success-message');
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Hide previous messages
+      errorDiv?.classList.add('hidden');
+      successDiv?.classList.add('hidden');
+
+      const formData = new FormData(form);
+      
+      // Client-side validation
+      const cedula = formData.get('numero_cedula') as string;
+      const cleaned = cedula.replace(/\D/g, '');
+      
+      if (cleaned.length !== 9 && (cleaned.length < 11 || cleaned.length > 12)) {
+        if (errorDiv) {
+          const errorText = errorDiv.querySelector('p');
+          if (errorText) errorText.textContent = 'Formato de cédula inválido';
+          errorDiv.classList.remove('hidden');
+        }
+        return;
+      }
+
+      // Call the action using Astro's actions API
+      try {
+        // Check if we're in edit mode by looking for disabled cedula field
+        const cedulaInput = form.querySelector('input[name="numero_cedula"]:disabled');
+        const isEditing = cedulaInput !== null;
+        
+        // If editing, ask for confirmation
+        if (isEditing) {
+          if (typeof window.showConfirm === 'function') {
+            // Use modal
+            window.showConfirm(
+              '¿Actualizar Jugador?',
+              '¿Estás seguro de actualizar los datos de este jugador?',
+              async () => {
+                await performUpdate(formData, isEditing, form, errorDiv, successDiv);
+              }
+            );
+            return; // Exit here, the callback will handle the update
+          } else {
+            // Fallback to native confirm
+            if (!confirm('¿Estás seguro de actualizar los datos de este jugador?')) {
+              return;
+            }
+          }
+        }
+        
+    // Perform the action
+        await performUpdate(formData, isEditing, form, errorDiv, successDiv);
+        
+      } catch (error: any) {
+        if (errorDiv) {
+          const errorText = errorDiv.querySelector('p');
+          if (errorText) errorText.textContent = error.message || 'Error de conexión';
+          errorDiv.classList.remove('hidden');
+        }
+      }
+    });
+  }
+  
+  // Helper function to perform the actual update/create
+  async function performUpdate(formData: FormData, isEditing: boolean, form: HTMLFormElement, errorDiv: HTMLElement | null, successDiv: HTMLElement | null) {
+    try {
+      // Call appropriate action
+      const result = isEditing 
+        ? await actions.updatePlayer(formData)
+        : await actions.addPlayerToTeam(formData);
+
+      if (result.error) {
+        if (errorDiv) {
+          const errorText = errorDiv.querySelector('p');
+          if (errorText) errorText.textContent = result.error.message || 'Error al procesar';
+          errorDiv.classList.remove('hidden');
+        }
+      } else {
+        // Redirect with success message params
+        const successMsg = isEditing ? 'Jugador actualizado exitosamente' : 'Jugador agregado exitosamente';
+        
+        let targetUrl = form.getAttribute('data-redirect-url');
+        
+        if (!targetUrl) {
+             if (window.location.pathname.includes('/admin/')) {
+                 targetUrl = window.location.pathname; // Reload current admin page
+             } else {
+                 targetUrl = '/delegado/equipo'; // Default delegate redirect
+             }
+        }
+
+        // Append params
+        const separator = targetUrl.includes('?') ? '&' : '?';
+        window.location.href = `${targetUrl}${separator}msg=${encodeURIComponent(successMsg)}&type=success`;
+      }
+    } catch (error: any) {
+      if (errorDiv) {
+        const errorText = errorDiv.querySelector('p');
+        if (errorText) errorText.textContent = error.message || 'Error de conexión';
+        errorDiv.classList.remove('hidden');
+      }
+    }
+  }
+</script>
+
+<style>
+  .form-group {
+    animation: slideIn 0.3s ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Modern validation styling */
+  input:user-invalid,
+  select:user-invalid {
+    border-color: #ef4444;
+  }
+
+  input:user-valid,
+  select:user-valid {
+    border-color: #10b981;
+  }
+
+  /* Fallback/Correction for browsers or specific behaviors */
+  input[type="date"]:invalid {
+      /* Date fields are invalid when empty + required, but we don't want red border immediately.
+         :user-invalid handles this mostly, but if using older browser fallback: */
+      border-color: #cbd5e1; /* slate-300 default */
+  }
+  input[type="date"]:user-invalid {
+      border-color: #ef4444;
+  }
+</style>

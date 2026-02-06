@@ -1,190 +1,69 @@
 ---
 import PublicLayout from '../layouts/PublicLayout.astro';
-import PublicEventCard from '../components/PublicEventCard.astro';
+import PublicTournamentCard from '../components/PublicTournamentCard.astro';
 import { supabase } from '../lib/supabase';
 
-// Pagination & Filter logic
-const search = Astro.url.searchParams.get('search') || '';
-const dateFilter = Astro.url.searchParams.get('date') || '';
-const page = parseInt(Astro.url.searchParams.get('page') || '1');
-const limit = 8;
-const start = (page - 1) * limit;
-const end = start + limit - 1;
+// Fetch active tournaments
+const { data: torneos, error } = await supabase
+  .from('torneos')
+  .select('*')
+  .order('created_at', { ascending: false });
 
-// Para la comparación de "hoy", usamos la fecha actual en la zona horaria de Costa Rica (CST/GMT-6)
-// o simplemente restamos unas horas al UTC para asegurar que eventos de hoy no desaparezcan prematuramente.
-const now = new Date();
-// Ajuste simple para asegurar que eventos del día actual se muestren incluso si es tarde en UTC
-const today = new Date(now.getTime() - (6 * 60 * 60 * 1000)).toISOString().split('T')[0];
+if (error) console.error("Error fetching tournaments:", error);
 
-let query = supabase
-  .from('events')
-  .select('*', { count: 'exact' });
-
-if (dateFilter) {
-  query = query.gte('date', dateFilter);
-} else {
-  // Por defecto, mostramos eventos desde hoy en adelante
-  query = query.gte('date', today);
-}
-
-if (search) {
-  query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,location.ilike.%${search}%`);
-}
-
-const { data: events, count, error } = await query
-  .order('date', { ascending: true })
-  .range(start, end);
-
-const totalPages = count ? Math.ceil(count / limit) : 1;
-
-if (error) console.error("Error fetching events:", error);
-
-// Optimization: Cache this page for 60 seconds on the edge
+// Optimization: Cache this page for 60 seconds
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, s-maxage=60');
 ---
 
-<PublicLayout title="Eventos Deportivos - Juegos Prosalud CCSS">
-
-        <!-- Hero Section / Title -->
-        <section class="py-12">
-            <div class="max-w-7xl mx-auto text-center">
-                <h2 class="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight mb-4">
-                    Calendario de <span class="text-green-600">Eventos Deportivos</span>
-                </h2>
-                <p class="text-lg text-slate-600 max-w-2xl mx-auto">
-                    Participa en las actividades deportivas organizadas para el bienestar de nuestros colaboradores.
+<PublicLayout title="Torneos - Juegos Prosalud CCSS">
+        <!-- Hero Section -->
+        <section class="py-12 bg-gradient-to-br from-blue-50 via-white to-green-50">
+            <div class="max-w-7xl mx-auto text-center px-4">
+                <h1 class="text-4xl md:text-6xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    Torneos <span class="text-blue-600">Deportivos</span>
+                </h1>
+                <p class="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto">
+                    Explora los torneos activos, consulta tablas de posiciones, calendarios y estadísticas.
                 </p>
             </div>
         </section>
 
-        <!-- Main Content Area -->
-        <div class="pb-20" id="eventos">
-            
-            <!-- Search & Filters Toolbar -->
-            <div class="bg-white rounded-2xl p-4 shadow-xl shadow-slate-200/50 mb-12 -mt-8 border border-slate-100 flex flex-col md:flex-row items-center gap-4">
-                <form method="GET" class="flex-1 w-full flex flex-col sm:flex-row items-center gap-4">
-                    <div class="relative flex-1 w-full">
-                        <svg class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                        </svg>
-                        <input 
-                            type="text" 
-                            name="search"
-                            value={search}
-                            placeholder="Buscar por nombre, lugar o descripción..." 
-                            class="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 text-slate-700 placeholder-slate-400 font-medium transition-all"
-                        />
-                    </div>
-                    
-                    <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <label for="date" class="text-sm font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Desde:</label>
-                        <input 
-                            id="date"
-                            type="date" 
-                            name="date" 
-                            value={dateFilter || today}
-                            class="flex-1 sm:w-auto px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 text-slate-600 text-sm font-medium cursor-pointer transition-all"
-                            onchange="this.form.submit()"
-                        />
-                    </div>
-
-                    <button type="submit" class="w-full sm:w-auto px-8 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-900/10 active:scale-95">
-                        Filtrar
-                    </button>
-                    
-                    {(search || dateFilter) && (
-                        <a href="/" class="text-sm font-semibold text-red-500 hover:text-red-600 px-2">
-                            Limpiar
-                        </a>
-                    )}
-                </form>
-            </div>
-
-            <!-- Events Grid -->
-            <div>
-                <div class="flex justify-between items-end mb-8">
+        <!-- Tournaments Grid -->
+        <section class="py-12">
+            <div class="max-w-7xl mx-auto px-4">
+                <div class="flex justify-between items-center mb-8">
                     <div>
-                        <h3 class="text-2xl font-bold text-slate-900">Actividades Disponibles</h3>
-                        <p class="text-slate-500">Mostrando eventos programados para los próximos días.</p>
+                        <h2 class="text-2xl md:text-3xl font-bold text-slate-900">Torneos Disponibles</h2>
+                        <p class="text-slate-500 mt-1">Selecciona un torneo para ver más detalles</p>
                     </div>
-                    <div class="hidden sm:flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
-                        <button class="p-2 bg-white text-green-600 rounded shadow-sm"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg></button>
+                    <div class="text-sm font-bold text-slate-400 uppercase">
+                        {torneos?.length || 0} Torneos
                     </div>
                 </div>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                    {events?.map((event) => (
-                        <PublicEventCard event={event} />
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {torneos?.map((torneo) => (
+                        <PublicTournamentCard tournament={torneo} />
                     ))}
-                    
-                    {(!events || events.length === 0) && (
-                        <div class="col-span-full py-24 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
-                            <div class="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
-                                <svg class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                            </div>
-                            <h4 class="text-xl font-bold text-slate-900">No se encontraron eventos</h4>
-                            <p class="text-slate-500 mt-2 max-w-xs mx-auto">No hay actividades programadas que coincidan con tus criterios de búsqueda en este momento.</p>
-                            {(search || dateFilter) && (
-                                <button onclick="window.location.href='/'" class="mt-6 px-8 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-900/20 transition-all active:scale-95">Ver todos los eventos</button>
-                            )}
-                        </div>
-                    )}
                 </div>
 
-                <!-- Pagination -->
-                {totalPages > 1 && (
-                    <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mt-12 pb-8">
-                        <a 
-                            href={`?page=${page - 1}${search ? `&search=${search}` : ''}${dateFilter ? `&date=${dateFilter}` : ''}#eventos`}
-                            class={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all border ${page <= 1 ? 'pointer-events-none opacity-40 bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 hover:bg-green-600 hover:text-white hover:border-green-600 shadow-sm'}`}
-                        >
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-                            Anterior
-                        </a>
-                        
-                        <div class="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 max-w-full custom-scrollbar px-2">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                                <a 
-                                    href={`?page=${p}${search ? `&search=${search}` : ''}${dateFilter ? `&date=${dateFilter}` : ''}#eventos`}
-                                    class={`min-w-[44px] h-11 flex items-center justify-center rounded-xl font-bold transition-all flex-shrink-0 ${p === page ? 'bg-green-600 text-white shadow-lg shadow-green-600/30' : 'bg-white text-slate-600 hover:bg-green-50 border border-slate-200'}`}
-                                >
-                                    {p}
-                                </a>
-                            ))}
+                {(!torneos || torneos.length === 0) && (
+                    <div class="col-span-full py-24 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
+                        <div class="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
+                            <svg class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
                         </div>
-
-                        <a 
-                            href={`?page=${page + 1}${search ? `&search=${search}` : ''}${dateFilter ? `&date=${dateFilter}` : ''}#eventos`}
-                            class={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all border ${page >= totalPages ? 'pointer-events-none opacity-40 bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 hover:bg-green-600 hover:text-white hover:border-green-600 shadow-sm'}`}
-                        >
-                            Siguiente
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                        </a>
+                        <h3 class="text-xl font-bold text-slate-900">No hay torneos disponibles</h3>
+                        <p class="text-slate-500 mt-2 max-w-xs mx-auto">Los torneos aparecerán aquí cuando sean creados por los administradores.</p>
                     </div>
                 )}
             </div>
-
-        </div>
+        </section>
 </PublicLayout>
 
 <style>
     html {
         scroll-behavior: smooth;
-    }
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-        width: 10px;
-    }
-    ::-webkit-scrollbar-track {
-        background: #f1f5f9; 
-    }
-    ::-webkit-scrollbar-thumb {
-        background: #cbd5e1; 
-        border-radius: 5px;
-        border: 2px solid #f1f5f9;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8; 
     }
 </style>

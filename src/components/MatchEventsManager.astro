@@ -1,0 +1,202 @@
+---
+interface Props {
+  partidoId: string;
+  equipoLocalId: string;
+  equipoLocalNombre: string;
+  equipoVisitanteId: string;
+  equipoVisitanteNombre: string;
+  jugadoresLocal: Array<{ numero_cedula: string; nombre: string; dorsal?: number }>;
+  jugadoresVisitante: Array<{ numero_cedula: string; nombre: string; dorsal?: number }>;
+  eventos: Array<{
+    id: string;
+    tipo_evento: string;
+    minuto: number;
+    jugador_cedula: string;
+    equipo_id: string;
+    jugador?: { nombre: string; dorsal?: number };
+  }>;
+}
+
+const { 
+  partidoId, 
+  equipoLocalId, 
+  equipoLocalNombre,
+  equipoVisitanteId, 
+  equipoVisitanteNombre,
+  jugadoresLocal, 
+  jugadoresVisitante,
+  eventos 
+} = Astro.props;
+
+// Sort events by minute
+const sortedEvents = [...eventos].sort((a, b) => a.minuto - b.minuto);
+---
+
+<div class="space-y-6">
+  <!-- Events List -->
+  <div class="space-y-3">
+    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest">Eventos del Partido</h4>
+    
+    {sortedEvents.length > 0 ? (
+      <div class="space-y-2 max-h-64 overflow-y-auto">
+        {sortedEvents.map((evento) => (
+          <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 group hover:border-blue-200 transition-colors">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-black text-sm">
+                {evento.minuto}'
+              </div>
+              <div>
+                <p class="font-bold text-slate-900 text-sm">
+                  {evento.tipo_evento === 'gol' && '⚽'} 
+                  {evento.jugador?.nombre || 'Jugador'}
+                  {evento.jugador?.dorsal && ` #${evento.jugador.dorsal}`}
+                </p>
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                  {evento.equipo_id === equipoLocalId ? equipoLocalNombre : equipoVisitanteNombre}
+                </p>
+              </div>
+            </div>
+            <button 
+              onclick={`deleteEvent('${evento.id}')`}
+              class="opacity-0 group-hover:opacity-100 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+              title="Eliminar evento"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div class="py-8 text-center bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+        <p class="text-slate-400 text-xs font-bold uppercase tracking-widest">Sin eventos registrados</p>
+      </div>
+    )}
+  </div>
+
+  <!-- Add Event Form -->
+  <div class="border-t border-slate-100 pt-6">
+    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Agregar Gol</h4>
+    
+    <form id="add-event-form" class="space-y-4">
+      <input type="hidden" name="partido_id" value={partidoId} />
+      <input type="hidden" name="tipo_evento" value="gol" />
+      
+      <div class="grid grid-cols-2 gap-4">
+        <div class="space-y-1">
+          <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Equipo</label>
+          <select name="equipo_id" id="event-equipo-select" required class="w-full bg-slate-50 border-none px-4 py-3 rounded-xl font-bold text-slate-900 text-sm">
+            <option value="">Seleccionar...</option>
+            <option value={equipoLocalId}>{equipoLocalNombre}</option>
+            <option value={equipoVisitanteId}>{equipoVisitanteNombre}</option>
+          </select>
+        </div>
+        
+        <div class="space-y-1">
+          <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Minuto</label>
+          <input 
+            type="number" 
+            name="minuto" 
+            min="0" 
+            max="120" 
+            required 
+            placeholder="45"
+            class="w-full bg-slate-50 border-none px-4 py-3 rounded-xl font-bold text-slate-900 text-sm"
+          />
+        </div>
+      </div>
+      
+      <div class="space-y-1">
+        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Jugador</label>
+        <select name="jugador_cedula" id="event-jugador-select" required class="w-full bg-slate-50 border-none px-4 py-3 rounded-xl font-bold text-slate-900 text-sm">
+          <option value="">Primero selecciona un equipo...</option>
+        </select>
+      </div>
+      
+      <button 
+        type="submit" 
+        class="w-full bg-blue-600 text-white py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all"
+      >
+        ⚽ Agregar Gol
+      </button>
+    </form>
+  </div>
+</div>
+
+<script define:vars={{ jugadoresLocal, jugadoresVisitante, equipoLocalId, equipoVisitanteId, partidoId }}>
+  import { actions } from 'astro:actions';
+  
+  // Dynamic player dropdown based on team selection
+  const equipoSelect = document.getElementById('event-equipo-select');
+  const jugadorSelect = document.getElementById('event-jugador-select');
+  
+  if (equipoSelect && jugadorSelect) {
+    equipoSelect.addEventListener('change', (e) => {
+      const selectedEquipo = (e.target as HTMLSelectElement).value;
+      const jugadores = selectedEquipo === equipoLocalId ? jugadoresLocal : jugadoresVisitante;
+      
+      jugadorSelect.innerHTML = '<option value="">Seleccionar jugador...</option>';
+      jugadores.forEach(j => {
+        const option = document.createElement('option');
+        option.value = j.numero_cedula;
+        option.textContent = `${j.dorsal ? `#${j.dorsal} ` : ''}${j.nombre}`;
+        jugadorSelect.appendChild(option);
+      });
+    });
+  }
+  
+  // Add event form handler
+  const addEventForm = document.getElementById('add-event-form') as HTMLFormElement;
+  if (addEventForm) {
+    addEventForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(addEventForm);
+      
+      // Convert minuto to number
+      const minuto = parseInt(formData.get('minuto') as string);
+      formData.set('minuto', minuto.toString());
+      
+      try {
+        const { error } = await actions.addMatchEvent(formData);
+        
+        if (error) {
+          window.showToast(error.message, 'error');
+        } else {
+          // Reload to show updated events and score
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.set('msg', 'Gol registrado correctamente');
+          currentUrl.searchParams.set('type', 'success');
+          window.location.href = currentUrl.toString();
+        }
+      } catch (err: any) {
+        window.showToast(err.message || 'Error al agregar evento', 'error');
+      }
+    });
+  }
+  
+  // Delete event function
+  (window as any).deleteEvent = async (eventId: string) => {
+    window.showConfirm(
+      'Eliminar Gol',
+      '¿Estás seguro de eliminar este gol? El marcador se actualizará automáticamente.',
+      async () => {
+        try {
+          const formData = new FormData();
+          formData.append('id', eventId);
+          
+          const { error } = await actions.deleteMatchEvent(formData);
+          
+          if (error) {
+            window.showToast(error.message, 'error');
+          } else {
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('msg', 'Gol eliminado correctamente');
+            currentUrl.searchParams.set('type', 'success');
+            window.location.href = currentUrl.toString();
+          }
+        } catch (err: any) {
+          window.showToast(err.message || 'Error al eliminar evento', 'error');
+        }
+      }
+    );
+  };
+</script>

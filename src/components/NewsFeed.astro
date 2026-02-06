@@ -1,0 +1,49 @@
+---
+interface Props {
+  news: {
+    id: string;
+    titulo: string;
+    contenido: string | null;
+    imagen_url: string | null;
+    created_at: string;
+  }[];
+}
+
+const { news } = Astro.props;
+---
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+  {news && news.length > 0 ? news.map((item) => (
+    <article class="group bg-white rounded-[2rem] overflow-hidden shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col hover:-translate-y-2 transition-all duration-500">
+      <div class="h-56 overflow-hidden relative">
+        {item.imagen_url ? (
+          <img src={item.imagen_url} alt={item.titulo} class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+        ) : (
+          <div class="w-full h-full bg-slate-100 flex items-center justify-center">
+             <span class="text-4xl">📰</span>
+          </div>
+        )}
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      </div>
+      <div class="p-8 flex-1 flex flex-col">
+        <span class="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500 mb-3 block">
+            {new Date(item.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}
+        </span>
+        <h3 class="text-xl font-black text-slate-900 leading-tight mb-4 group-hover:text-blue-600 transition-colors">
+            {item.titulo}
+        </h3>
+        <p class="text-slate-500 text-sm leading-relaxed line-clamp-3">
+            {item.contenido}
+        </p>
+        <div class="mt-auto pt-6 flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest group-hover:text-blue-500 transition-colors">
+            Leer más 
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+        </div>
+      </div>
+    </article>
+  )) : (
+     <div class="col-span-full py-20 text-center text-slate-400">
+        <p>No hay noticias recientes.</p>
+     </div>
+  )}
+</div>
