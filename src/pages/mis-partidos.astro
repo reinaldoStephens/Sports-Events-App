@@ -1,0 +1,123 @@
+---
+import PublicLayout from '../layouts/PublicLayout.astro';
+import { supabase } from '../lib/supabase';
+
+const { cookies, redirect } = Astro;
+
+const accessToken = cookies.get('sb-access-token');
+const refreshToken = cookies.get('sb-refresh-token');
+
+if (!accessToken || !refreshToken) {
+  return redirect('/login?redirect=/mis-partidos');
+}
+
+const { data: { session }, error } = await supabase.auth.setSession({
+  access_token: accessToken.value,
+  refresh_token: refreshToken.value,
+});
+
+if (error || !session) {
+  return redirect('/login?redirect=/mis-partidos');
+}
+
+const user = session.user;
+
+// 1. Find User's Team
+const { data: teams } = await supabase
+    .from('equipos')
+    .select('id, nombre, logo_url, torneo:torneos(nombre)')
+    .eq('capitan_id', user.id);
+
+const myTeams = teams || [];
+const teamIds = myTeams.map(t => t.id);
+
+// 2. Fetch User's Matches
+let myMatches: any[] = [];
+if (teamIds.length > 0) {
+    const { data: matches } = await supabase
+        .from('partidos')
+        .select(`
+            *,
+            local:equipo_local_id(nombre, logo_url),
+            visitante:equipo_visitante_id(nombre, logo_url),
+            jornada:jornada_id(numero_jornada, nombre_fase),
+            torneo:jornadas(torneo_id, torneos(nombre))
+        `)
+        .or(`equipo_local_id.in.(${teamIds.join(',')}),equipo_visitante_id.in.(${teamIds.join(',')})`)
+        .order('fecha_partido', { ascending: true }); // Upcoming first?
+    
+    myMatches = matches || [];
+}
+---
+
+<PublicLayout title="Mis Partidos">
+    <div class="bg-indigo-900 py-20 px-4 text-center text-white relative overflow-hidden">
+        <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1517466787929-bc90951d6dbb?auto=format&fit=crop&q=80')] bg-cover bg-center opacity-20"></div>
+        <div class="relative z-10 max-w-4xl mx-auto space-y-4">
+            <h1 class="text-4xl md:text-6xl font-black uppercase tracking-tighter">Mis Partidos</h1>
+            {myTeams.length > 0 ? (
+                <p class="text-indigo-200 text-lg md:text-xl font-medium max-w-2xl mx-auto">
+                    Calendario de <span class="text-white font-bold">{myTeams.map(t => t.nombre).join(', ')}</span>
+                </p>
+            ) : (
+                <p class="text-indigo-200 text-lg md:text-xl font-medium max-w-2xl mx-auto">
+                    No tienes equipos asignados como capitán.
+                </p>
+            )}
+        </div>
+    </div>
+
+    <div class="max-w-5xl mx-auto px-4 py-16">
+        {myMatches.length > 0 ? (
+            <div class="space-y-6">
+                {myMatches.map(match => (
+                    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-lg transition-all group">
+                        <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-4">
+                            <div class="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm">
+                                {match.torneo?.torneos?.nombre} - Jornada {match.jornada?.numero_jornada}
+                            </div>
+                            <div class="text-sm font-bold text-slate-600 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                {match.fecha_partido ? new Date(match.fecha_partido).toLocaleString() : 'Fecha por definir'}
+                            </div>
+                        </div>
+                        <div class="p-8">
+                             <div class="flex flex-col md:flex-row items-center justify-center gap-8 md:gap-16">
+                                <div class="flex flex-col items-center gap-4 flex-1 text-center">
+                                    <div class="w-20 h-20 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl font-black text-slate-300">
+                                        {match.local?.logo_url ? <img src={match.local.logo_url} class="w-full h-full object-contain p-2" /> : match.local?.nombre[0]}
+                                    </div>
+                                    <span class="font-black text-slate-900 text-lg md:text-2xl uppercase tracking-tight">{match.local?.nombre}</span>
+                                </div>
+                                
+                                <div class="flex flex-col items-center gap-2">
+                                    <div class="text-4xl font-black text-slate-200">VS</div>
+                                    {match.estado_partido === 'finalizado' && (
+                                        <div class="px-4 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-black uppercase tracking-widest">
+                                            {match.puntos_local} - {match.puntos_visitante}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div class="flex flex-col items-center gap-4 flex-1 text-center">
+                                    <div class="w-20 h-20 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl font-black text-slate-300">
+                                        {match.visitante?.logo_url ? <img src={match.visitante.logo_url} class="w-full h-full object-contain p-2" /> : match.visitante?.nombre[0]}
+                                    </div>
+                                    <span class="font-black text-slate-900 text-lg md:text-2xl uppercase tracking-tight">{match.visitante?.nombre}</span>
+                                </div>
+                             </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        ) : (
+            <div class="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-white mb-6 shadow-sm">
+                   <svg class="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                </div>
+                <h2 class="text-xl font-black text-slate-300 uppercase tracking-widest">Sin Partidos Programados</h2>
+                <p class="text-slate-400 mt-2 text-sm">No se encontraron partidos para tus equipos.</p>
+            </div>
+        )}
+    </div>
+</PublicLayout>

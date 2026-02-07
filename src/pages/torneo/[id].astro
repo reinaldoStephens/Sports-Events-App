@@ -1,0 +1,387 @@
+---
+import PublicLayout from '../../layouts/PublicLayout.astro';
+import MatchCard from '../../components/MatchCard.astro';
+import StandingsTable from '../../components/StandingsTable.astro';
+import NewsFeed from '../../components/NewsFeed.astro';
+import { supabase } from '../../lib/supabase';
+import { calculateStandings } from '../../lib/standings';
+
+// Get params
+const { id } = Astro.params;
+const tab = Astro.url.searchParams.get('tab') || 'resumen';
+
+if (!id) return Astro.redirect('/');
+
+// Fetch data
+// 1. Torneo
+// Interfaces
+interface Torneo {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  imagen_portada: string | null;
+  logo_url: string | null;
+  fecha_inicio: string;
+  estado: string;
+}
+
+interface Equipo {
+  id: string;
+  nombre: string;
+  logo_url: string | null;
+  escudo_url?: string | null;
+}
+
+interface Jornada {
+  id: string;
+  numero_jornada: number;
+  nombre_fase: string | null;
+  torneo_id: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+}
+
+interface Partido {
+  id: string;
+  equipo_local_id: string | null;
+  equipo_visitante_id: string | null;
+  puntos_local: number | null;
+  puntos_visitante: number | null;
+  estado_partido: 'pendiente' | 'en_curso' | 'finalizado';
+  fecha_partido: string | null;
+  local?: Equipo;
+  visitante?: Equipo;
+  jornada?: Jornada;
+}
+
+interface Noticia {
+  id: string;
+  titulo: string;
+  contenido: string | null;
+  imagen_url: string | null;
+  created_at: string;
+}
+
+// Fetch data
+// 1. Torneo
+const { data: torneoRaw, error: torneoError } = await supabase
+  .from('torneos')
+  .select('*')
+  .eq('id', id)
+  .single();
+
+if (torneoError || !torneoRaw) {
+  return new Response(null, { status: 404, statusText: "Torneo Not Found" });
+}
+
+const torneo = torneoRaw as Torneo;
+
+// 2. Matches
+// Using !inner on the join to filter by torneo_id
+const { data: matchesRaw } = await supabase
+    .from('partidos')
+    .select(`
+        *,
+        local:equipo_local_id(id, nombre, logo_url, escudo_url),
+        visitante:equipo_visitante_id(id, nombre, logo_url, escudo_url),
+        jornada:jornadas!inner(id, numero_jornada, nombre_fase, torneo_id)
+    `)
+    .eq('jornada.torneo_id', id)
+    .order('fecha_partido', { ascending: true });
+
+const matches = (matchesRaw || []) as Partido[];
+
+// 3. Equipos
+const { data: participantes } = await supabase
+    .from('torneo_participantes')
+    .select('equipo:equipos(*)')
+    .eq('torneo_id', id);
+
+const teams = (participantes?.map((p: any) => p.equipo).filter(Boolean) || []) as Equipo[];
+
+// 3.5. Jornadas
+const { data: jornadasRaw } = await supabase
+    .from('jornadas')
+    .select('*')
+    .eq('torneo_id', id)
+    .order('numero_jornada', { ascending: true });
+
+const jornadas = (jornadasRaw || []) as Jornada[];
+
+// 4. Noticias
+const { data: noticias } = await supabase
+    .from('noticias')
+    .select('*')
+    .eq('torneo_id', id)
+    .order('created_at', { ascending: false });
+
+const news = (noticias || []) as Noticia[];
+
+// Calculate Standings
+const standings = calculateStandings(teams, matches);
+
+// Derived Data for Resumen
+const lastMatches = matches.filter(m => m.estado_partido === 'finalizado').slice(-4).reverse();
+const nextMatches = matches.filter(m => m.estado_partido !== 'finalizado').slice(0, 4);
+const topStandings = standings.slice(0, 5);
+const recentNews = news.slice(0, 3);
+
+// Group matches by Jornada for Calendar view
+const matchesByJornada = matches.reduce((acc, match) => {
+    const jName = match.jornada?.nombre_fase || `Jornada ${match.jornada?.numero_jornada}`;
+    if (!acc[jName]) acc[jName] = [];
+    acc[jName].push(match);
+    return acc;
+}, {} as Record<string, Partido[]>);
+
+---
+
+<PublicLayout title={`${torneo.nombre} | Torneos Pro`}>
+    
+    <!-- Hero / Header Section -->
+    <div class="relative bg-slate-900 text-white pt-32 pb-12 -mt-20 overflow-hidden">
+        <div class="absolute inset-0">
+             {torneo.imagen_portada ? (
+                <img src={torneo.imagen_portada} class="w-full h-full object-cover opacity-20 blur-sm" />
+             ) : (
+                <div class="w-full h-full bg-gradient-to-br from-blue-900 to-slate-950"></div>
+             )}
+             <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent"></div>
+        </div>
+
+        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center gap-8">
+             <div class="w-32 h-32 md:w-40 md:h-40 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-4xl font-black shadow-2xl shrink-0">
+                {torneo.logo_url ? <img src={torneo.logo_url} class="w-full h-full object-contain p-4" /> : torneo.nombre[0]}
+             </div>
+             <div class="text-center md:text-left space-y-4">
+                <div class="flex items-center justify-center md:justify-start gap-4 text-xs font-black uppercase tracking-widest text-blue-400">
+                    <span class="px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
+                        {torneo.estado === 'activo' ? 'En Curso' : torneo.estado}
+                    </span>
+                    <span>{new Date(torneo.fecha_inicio).getFullYear()}</span>
+                </div>
+                <h1 class="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none">{torneo.nombre}</h1>
+                <p class="text-slate-400 max-w-2xl text-lg">{torneo.descripcion || 'La mejor competición deportiva del momento.'}</p>
+             </div>
+        </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="sticky top-20 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 overflow-x-auto pb-0">
+            <nav class="flex space-x-8 min-w-max">
+                {[
+                    { id: 'resumen', label: 'Resumen' },
+                    { id: 'calendario', label: 'Resultados y Calendario' },
+                    { id: 'posiciones', label: 'Tabla de Posiciones' },
+                    { id: 'noticias', label: 'Noticias' },
+                ].map((t) => (
+                    <a 
+                        href={`?tab=${t.id}`}
+                        class={`py-4 px-2 text-sm font-black uppercase tracking-widest border-b-[3px] transition-all ${tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-300'}`}
+                    >
+                        {t.label}
+                    </a>
+                ))}
+            </nav>
+        </div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="py-12 bg-slate-50 min-h-[600px]">
+        
+        {/* RESUMEN TAB */}
+        {tab === 'resumen' && (
+            <div class="space-y-16 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                
+                {/* Last Matches Grid */}
+                {lastMatches.length > 0 && (
+                    <section>
+                        <div class="flex items-center justify-between mb-8">
+                            <h2 class="text-2xl font-black text-slate-900 uppercase tracking-tighter">Últimos Resultados</h2>
+                            <a href="?tab=calendario" class="text-blue-600 font-bold text-xs uppercase tracking-widest hover:underline">Ver todo</a>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {lastMatches.map(match => <MatchCard match={match as any} />)}
+                        </div>
+                    </section>
+                )}
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                    {/* Standings Snippet */}
+                    <div class="lg:col-span-2 space-y-8">
+                         <div class="flex items-center justify-between">
+                            <h2 class="text-2xl font-black text-slate-900 uppercase tracking-tighter">Posiciones</h2>
+                            <a href="?tab=posiciones" class="text-blue-600 font-bold text-xs uppercase tracking-widest hover:underline">Ver tabla completa</a>
+                        </div>
+                        <StandingsTable standings={topStandings} />
+
+                        {nextMatches.length > 0 && (
+                            <div class="mt-12">
+                                <h2 class="text-2xl font-black text-slate-900 uppercase tracking-tighter mb-8">Próximos Encuentros</h2>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                     {nextMatches.map(match => <MatchCard match={match as any} />)}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* News Sidebar Snippet */}
+                    <div class="space-y-8">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-2xl font-black text-slate-900 uppercase tracking-tighter">Noticias</h2>
+                            <a href="?tab=noticias" class="text-blue-600 font-bold text-xs uppercase tracking-widest hover:underline">Ver todas</a>
+                        </div>
+                        <div class="flex flex-col gap-6">
+                            {recentNews.length > 0 ? recentNews.map(item => (
+                                <a href="#" class="group block bg-white p-6 rounded-2xl shadow-lg border border-slate-100 hover:shadow-blue-500/10 transition-all">
+                                    <span class="text-blue-500 text-[10px] font-black uppercase tracking-widest">{new Date(item.created_at).toLocaleDateString()}</span>
+                                    <h4 class="font-bold text-slate-900 mt-2 leading-tight group-hover:text-blue-600 transition-colors">{item.titulo}</h4>
+                                </a>
+                            )) : <p class="text-slate-400 text-sm">No hay noticias.</p>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* CALENDARIO TAB */}
+        {tab === 'calendario' && (
+            <div class="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-6xl mx-auto">
+                <h2 class="text-2xl font-black text-slate-900 uppercase tracking-tighter mb-6">
+                    Calendario de Partidos
+                </h2>
+
+                {jornadas && jornadas.length > 0 ? (
+                    <div class="space-y-6">
+                        {/* Horizontal Scroll Navigation */}
+                        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-2 sticky top-24 z-20">
+                            <div class="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide" id="jornadas-nav">
+                                {jornadas.map((jornada, index) => (
+                                    <button 
+                                        data-target={`jornada-${jornada.id}`}
+                                        class={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap jornada-tab-btn ${index === 0 ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+                                    >
+                                        Jornada {jornada.numero_jornada}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Match Containers */}
+                        <div class="space-y-4 min-h-[400px]">
+                            {jornadas.map((jornada, index) => (
+                                <div id={`jornada-${jornada.id}`} class={`jornada-container bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden animate-in fade-in duration-300 ${index !== 0 ? 'hidden' : ''}`}>
+                                    <div class="bg-slate-50/50 px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                        <h4 class="font-black text-slate-600 uppercase tracking-widest text-xs flex items-center gap-2">
+                                            <span class="bg-slate-200 text-slate-600 px-2 py-0.5 rounded text-[10px]">J{jornada.numero_jornada}</span>
+                                            {jornada.nombre_fase || 'Fase Regular'}
+                                        </h4>
+                                        {jornada.fecha_inicio && jornada.fecha_fin && (
+                                            <span class="text-slate-400 font-normal text-xs">
+                                                {new Date(jornada.fecha_inicio).toLocaleDateString()} - {new Date(jornada.fecha_fin).toLocaleDateString()}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div class="divide-y divide-slate-50">
+                                        {matches.filter((m: Partido) => m.jornada?.id === jornada.id).length > 0 ? 
+                                            matches.filter((m: Partido) => m.jornada?.id === jornada.id).map((match: Partido) => (
+                                                <div class="p-4 flex items-center justify-between hover:bg-blue-50/20 transition-colors">
+                                                    <div class="flex items-center gap-4 w-full">
+                                                        <div class="text-center w-14 flex-shrink-0 hidden sm:block">
+                                                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">{match.fecha_partido ? new Date(match.fecha_partido).toLocaleDateString(undefined, {weekday: 'short'}) : 'TBD'}</div>
+                                                            <div class="text-lg font-black text-slate-900 leading-none">{match.fecha_partido ? new Date(match.fecha_partido).getDate() : '--'}</div>
+                                                            <div class="text-[9px] font-bold text-slate-400 uppercase">{match.fecha_partido ? new Date(match.fecha_partido).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</div>
+                                                        </div>
+                                                        
+                                                        <div class="flex flex-col gap-2 w-full">
+                                                            {/* Local */}
+                                                            <div class="flex items-center justify-between">
+                                                                <div class="flex items-center gap-3">
+                                                                    <div class="w-6 h-6 rounded bg-slate-50 flex items-center justify-center p-0.5">
+                                                                        {match.local?.logo_url ? <img src={match.local.logo_url} class="w-full h-full object-contain" alt={match.local.nombre} /> : <span class="text-[10px] font-black text-slate-300">{match.local?.nombre[0]}</span>}
+                                                                    </div>
+                                                                    <span class={`font-bold text-sm ${match.puntos_local !== null && match.puntos_visitante !== null && match.puntos_local > match.puntos_visitante ? 'text-slate-900' : 'text-slate-600'}`}>{match.local?.nombre}</span>
+                                                                </div>
+                                                                <span class="font-black text-slate-900 text-lg">{match.puntos_local ?? '-'}</span>
+                                                            </div>
+                                                            {/* Visitante */}
+                                                            <div class="flex items-center justify-between">
+                                                                <div class="flex items-center gap-3">
+                                                                    <div class="w-6 h-6 rounded bg-slate-50 flex items-center justify-center p-0.5">
+                                                                        {match.visitante?.logo_url ? <img src={match.visitante.logo_url} class="w-full h-full object-contain" alt={match.visitante.nombre} /> : <span class="text-[10px] font-black text-slate-300">{match.visitante?.nombre[0]}</span>}
+                                                                    </div>
+                                                                    <span class={`font-bold text-sm ${match.puntos_visitante !== null && match.puntos_local !== null && match.puntos_visitante > match.puntos_local ? 'text-slate-900' : 'text-slate-600'}`}>{match.visitante?.nombre}</span>
+                                                                </div>
+                                                                <span class="font-black text-slate-900 text-lg">{match.puntos_visitante ?? '-'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )) : (
+                                            <div class="py-12 flex flex-col items-center justify-center text-center">
+                                                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                                                    <svg class="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                </div>
+                                                <p class="text-slate-400 text-xs font-bold uppercase tracking-widest">No hay partidos en esta jornada</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                    <div class="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
+                        <p class="text-slate-400 font-bold">No hay jornadas creadas</p>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* POSICIONES TAB */}
+        {tab === 'posiciones' && (
+             <div class="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto">
+                <StandingsTable standings={standings} />
+             </div>
+        )}
+
+        {/* NOTICIAS TAB */}
+        {tab === 'noticias' && (
+             <div class="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto">
+                <NewsFeed news={news as any[]} />
+             </div>
+        )}
+
+    </div>
+
+    <script>
+        // Matchday Tabs Logic (Public View)
+        const tabBtns = document.querySelectorAll('.jornada-tab-btn');
+        const containers = document.querySelectorAll('.jornada-container');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // 1. Reset all buttons
+                tabBtns.forEach(b => {
+                    b.classList.remove('bg-slate-900', 'text-white', 'shadow-lg');
+                    b.classList.add('bg-slate-50', 'text-slate-400', 'hover:bg-slate-100');
+                });
+
+                // 2. Activate clicked button
+                btn.classList.remove('bg-slate-50', 'text-slate-400', 'hover:bg-slate-100');
+                btn.classList.add('bg-slate-900', 'text-white', 'shadow-lg');
+
+                // 3. Show target container
+                const targetId = (btn as HTMLElement).dataset.target;
+                containers.forEach(container => {
+                    if (container.id === targetId) {
+                        container.classList.remove('hidden');
+                    } else {
+                        container.classList.add('hidden');
+                    }
+                });
+            });
+        });
+    </script>
+</PublicLayout>

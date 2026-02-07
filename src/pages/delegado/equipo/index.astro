@@ -1,0 +1,485 @@
+---
+/**
+ * Delegado Team Management Page
+ * Allows team owners to manage their team and players
+ */
+
+import AdminSidebarLayout from '../../../layouts/AdminSidebarLayout.astro';
+import RegistrationProgress from '../../../components/RegistrationProgress.astro';
+import PlayerRegistrationForm from '../../../components/PlayerRegistrationForm.astro';
+import ToastNotification from '../../../components/ToastNotification.astro';
+import ConfirmationModal from '../../../components/ConfirmationModal.astro';
+import { supabase } from '../../../lib/supabase';
+
+const user = Astro.locals.user;
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+// Get teams owned by this delegado
+const { data: teams, error: teamsError } = await supabase
+  .from('equipos')
+  .select('*')
+  .eq('delegado_id', user.id);
+
+const myTeams = teams || [];
+
+// Get current team from query or first team
+const teamId = Astro.url.searchParams.get('team') || myTeams[0]?.id;
+const currentTeam = myTeams.find(t => t.id === teamId) || myTeams[0];
+
+// Get edit mode params
+const editCedula = Astro.url.searchParams.get('edit');
+let playerToEdit: any = null;
+
+if (editCedula && currentTeam) {
+  const { data: playerData } = await supabase
+    .from('deportistas')
+    .select('*')
+    .eq('numero_cedula', editCedula)
+    .eq('equipo_id', currentTeam.id)
+    .single();
+  
+  playerToEdit = playerData;
+}
+
+// Get players for current team
+let players: any[] = [];
+let playerCount = 0;
+if (currentTeam) {
+  const { data: playersData, error: playersError } = await supabase
+    .from('deportistas')
+    .select('*')
+    .eq('equipo_id', currentTeam.id)
+    .order('dorsal', { ascending: true, nullsFirst: false });
+  
+  if (playersError) {
+    console.error('Error fetching players:', playersError);
+  }
+  
+  console.log('Players fetched:', playersData?.length || 0, 'for team:', currentTeam.id);
+  
+  players = playersData || [];
+  playerCount = players.length;
+}
+
+const hasCaptain = currentTeam?.capitan_id ? true : false;
+const hasFieldAddress = currentTeam?.direccion_cancha ? true : false;
+---
+
+<AdminSidebarLayout title="Gestión de Equipo">
+  <ToastNotification />
+  <ConfirmationModal />
+  
+  <div class="container mx-auto px-4 py-8 max-w-7xl">
+    <!-- Header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-slate-800 mb-2">
+        Gestión de Equipo
+      </h1>
+      <p class="text-slate-600">
+        Administra tu equipo y jugadores
+      </p>
+    </div>
+
+    <!-- Team Selector -->
+    {myTeams.length > 1 && (
+      <div class="mb-6 bg-white rounded-lg shadow-md p-4">
+        <label class="block text-sm font-semibold text-slate-700 mb-2">
+          Seleccionar Equipo
+        </label>
+        <select 
+          class="w-full max-w-md px-4 py-2 border border-slate-300 rounded-lg"
+          onchange="window.location.href = '/delegado/equipo?team=' + this.value"
+        >
+          {myTeams.map(team => (
+            <option value={team.id} selected={team.id === currentTeam?.id}>
+              {team.nombre}
+            </option>
+          ))}
+        </select>
+      </div>
+    )}
+
+    {!currentTeam ? (
+      <!-- No Teams -->
+      <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-8 text-center">
+        <svg class="w-16 h-16 text-yellow-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <h2 class="text-xl font-bold text-yellow-800 mb-2">
+          No tienes equipos registrados
+        </h2>
+        <p class="text-yellow-700 mb-4">
+          Crea tu primer equipo para comenzar
+        </p>
+        <a 
+          href="/delegado/crear-equipo" 
+          class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+        >
+          Crear Equipo
+        </a>
+      </div>
+    ) : (
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left Column: Team Info & Progress -->
+        <div class="lg:col-span-1 space-y-6" data-team-id={currentTeam.id}>
+          <!-- Team Card -->
+          <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-bold text-slate-800 mb-4">
+              {currentTeam.nombre}
+            </h2>
+            
+            <div class="space-y-3 text-sm">
+              <div>
+                <span class="text-slate-600">Director Técnico:</span>
+                <p class="font-semibold">{user.email}</p>
+              </div>
+              
+              {currentTeam.telefono_contacto && (
+                <div>
+                  <span class="text-slate-600">Teléfono:</span>
+                  <p class="font-semibold">{currentTeam.telefono_contacto}</p>
+                </div>
+              )}
+              
+              {currentTeam.direccion_cancha && (
+                <div>
+                  <span class="text-slate-600">Cancha:</span>
+                  <p class="font-semibold">{currentTeam.direccion_cancha}</p>
+                </div>
+              )}
+
+              {currentTeam.bloqueado_edicion && (
+                <div class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p class="text-green-800 font-semibold text-xs">
+                    ✓ Equipo Aprobado y Bloqueado
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- Progress -->
+          <RegistrationProgress 
+            teamId={currentTeam.id}
+            currentPlayers={playerCount}
+            hasCaptain={hasCaptain}
+            hasFieldAddress={hasFieldAddress}
+          />
+        </div>
+
+        <!-- Right Column: Player Management -->
+        <div class="lg:col-span-2 space-y-6">
+          <!-- Players List -->
+          <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-xl font-bold text-slate-800">
+                Jugadores ({playerCount}/11)
+              </h3>
+              <div class="flex items-center gap-2">
+                 {currentTeam.bloqueado_edicion && (
+                    <span class="px-3 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded-full">
+                    Edición bloqueada
+                    </span>
+                 )}
+              </div>
+            </div>
+
+            {players.length === 0 ? (
+              <div class="text-center py-8 text-slate-500">
+                <p>No hay jugadores registrados</p>
+                <p class="text-sm mt-2">Agrega tu primer jugador usando el formulario abajo</p>
+              </div>
+            ) : (
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead class="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Dorsal</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Nombre</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Posición</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Edad</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Capitán</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-200">
+                    {players.map(player => (
+                      <tr class="hover:bg-slate-50">
+                        <td class="px-4 py-3">
+                          <span class="inline-flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-800 font-bold rounded-full text-sm">
+                            {player.dorsal || 'N/A'}
+                          </span>
+                        </td>
+                        <td class="px-4 py-3">
+                          <div>
+                            <p class="font-semibold text-slate-800">
+                              {player.nombre_deportivo || player.nombre}
+                            </p>
+                            {player.numero_cedula === currentTeam.capitan_id && (
+                              <span class="text-xs text-blue-600 font-semibold">★ Capitán</span>
+                            )}
+                          </div>
+                        </td>
+                        <td class="px-4 py-3 text-slate-600">
+                          {player.posicion || 'N/A'}
+                        </td>
+                        <td class="px-4 py-3 text-slate-600">
+                          {player.edad || 'N/A'}
+                        </td>
+                        <td class="px-4 py-3">
+                          {!currentTeam.bloqueado_edicion && (
+                            <button
+                              type="button"
+                              class={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                                player.numero_cedula === currentTeam.capitan_id
+                                  ? 'bg-blue-100 text-blue-700 cursor-default'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700'
+                              }`}
+                              onclick={player.numero_cedula === currentTeam.capitan_id 
+                                ? '' 
+                                : `assignCaptain('${player.numero_cedula}')`}
+                              disabled={player.numero_cedula === currentTeam.capitan_id}
+                            >
+                              {player.numero_cedula === currentTeam.capitan_id ? '★ Es capitán' : 'Hacer capitán'}
+                            </button>
+                          )}
+                        </td>
+                        <td class="px-4 py-3">
+                          {!currentTeam.bloqueado_edicion && (
+                            <div class="flex gap-2">
+                              <!-- Editar -->
+                              <button
+                                type="button"
+                                onclick={`editPlayer('${player.numero_cedula}')`}
+                                class="text-blue-600 hover:text-blue-800 transition-colors"
+                                title="Editar jugador"
+                              >
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                              </button>
+                              <!-- Eliminar -->
+                              <button
+                                type="button"
+                                onclick={`deletePlayer('${player.numero_cedula}', '${player.nombre}')`}
+                                class="text-red-600 hover:text-red-800 transition-colors"
+                                title="Eliminar jugador"
+                              >
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {!currentTeam.bloqueado_edicion && (
+            <>
+              {playerToEdit && (
+                <div class="mb-6 border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
+                  <div class="flex items-center justify-between mb-4">
+                    <h4 class="font-bold text-blue-900">Editando Jugador</h4>
+                    <a href="/delegado/equipo" class="text-sm text-blue-600 hover:text-blue-800">
+                      ✕ Cancelar
+                    </a>
+                  </div>
+                  <PlayerRegistrationForm 
+                    equipoId={currentTeam.id}
+                    editMode={true}
+                    playerData={playerToEdit}
+                  />
+                </div>
+              )}
+              {!playerToEdit && (
+                <!-- Add Player Form -->
+                <PlayerRegistrationForm equipoId={currentTeam.id} />
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    )}
+  </div>
+</AdminSidebarLayout>
+
+<script>
+  import { actions } from 'astro:actions';
+
+  // Auto-scroll to form when in edit mode
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('edit')) {
+    // Wait for DOM to be ready
+    window.addEventListener('DOMContentLoaded', () => {
+      const formContainer = document.getElementById('player-registration-form');
+      if (formContainer) {
+        setTimeout(() => {
+          formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+      }
+    });
+  }
+
+
+  // Global definitions
+  declare global {
+      interface Window {
+          assignCaptain: (cedula: string) => Promise<void>;
+          deletePlayer: (cedula: string, nombre: string) => Promise<void>;
+          editPlayer: (cedula: string) => Promise<void>;
+          showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+          showConfirm: (title: string, msg: string, onConfirm: () => void) => void;
+      }
+  }
+
+  // Global function to assign captain
+  window.assignCaptain = async (cedulaCaptain: string) => {
+    const teamId = new URLSearchParams(window.location.search).get('team') || 
+                   document.querySelector('[data-team-id]')?.getAttribute('data-team-id');
+    
+    if (!teamId) {
+      alert('Error: No se pudo identificar el equipo');
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('equipo_id', teamId);
+      formData.append('capitan_cedula', cedulaCaptain);
+
+      const result = await actions.assignCaptain(formData);
+
+      if (result.error) {
+        alert('Error: ' + result.error.message);
+      } else {
+        if (typeof window.showToast === 'function') {
+          window.showToast('Capitán asignado exitosamente', 'success');
+        }
+        // Reload page to show updated captain
+        setTimeout(() => window.location.reload(), 1000);
+      }
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // Global function to delete player
+  window.deletePlayer = async (cedula: string, nombre: string) => {
+    const teamId = document.querySelector('[data-team-id]')?.getAttribute('data-team-id');
+    if (!teamId) {
+      alert('Error: No se pudo identificar el equipo');
+      return;
+    }
+
+    // Use ConfirmationModal with callback pattern
+    if (typeof window.showConfirm === 'function') {
+      window.showConfirm(
+        '¿Eliminar Jugador?',
+        `¿Estás seguro de eliminar a ${nombre}?\n\nEsta acción no se puede deshacer.`,
+        async () => {
+          // This callback runs when user confirms
+          try {
+            const formData = new FormData();
+            formData.append('numero_cedula', cedula);
+            formData.append('equipo_id', teamId);
+
+            const result = await actions.deletePlayer(formData);
+
+            if (result.error) {
+              alert('Error: ' + result.error.message);
+            } else {
+              if (typeof window.showToast === 'function') {
+                window.showToast('Jugador eliminado', 'success');
+              }
+              // Reload page
+              setTimeout(() => window.location.reload(), 1000);
+            }
+          } catch (error: any) {
+            alert('Error: ' + error.message);
+          }
+        }
+      );
+    } else {
+      // Fallback to native confirm
+      if (!confirm(`¿Estás seguro de eliminar a ${nombre}?\n\nEsta acción no se puede deshacer.`)) {
+        return;
+      }
+
+      try {
+        const formData = new FormData();
+        formData.append('numero_cedula', cedula);
+        formData.append('equipo_id', teamId);
+
+        const result = await actions.deletePlayer(formData);
+
+        if (result.error) {
+          alert('Error: ' + result.error.message);
+        } else {
+          if (typeof window.showToast === 'function') {
+            window.showToast('Jugador eliminado', 'success');
+          }
+          setTimeout(() => window.location.reload(), 1000);
+        }
+      } catch (error: any) {
+        alert('Error: ' + error.message);
+      }
+    }
+  };
+
+
+  // Global function to edit player
+  window.editPlayer = async (cedula: string) => {
+    // Scroll to form
+    const formContainer = document.getElementById('player-registration-form');
+    if (formContainer) {
+      formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Find player data
+    const teamId = document.querySelector('[data-team-id]')?.getAttribute('data-team-id');
+    if (!teamId) return;
+
+    // Get player data from the table row
+    // This is a simple approach - in production you'd fetch from server
+    window.location.href = `?team=${teamId}&edit=${cedula}`;
+  };
+
+  // Check for toast params on load (newly added)
+  window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const msg = urlParams.get('msg');
+    const type = urlParams.get('type') as 'success' | 'error' | null;
+
+    if (msg && type && typeof window.showToast === 'function') {
+        window.showToast(msg, type);
+        // Clean URL to avoid showing again on refresh
+        const newUrl = window.location.pathname + (urlParams.get('team') ? `?team=${urlParams.get('team')}` : '');
+        window.history.replaceState({}, '', newUrl);
+    }
+  });
+</script>
+
+<style>
+  .container {
+    animation: fadeIn 0.3s ease-in;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+</style>
