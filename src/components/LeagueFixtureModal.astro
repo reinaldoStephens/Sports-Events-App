@@ -82,22 +82,34 @@ const { torneoId } = Astro.props;
         }
 
         try {
+            console.log('🔵 [LeagueFixture] Starting generation with:', { torneoId, doubleRound });
+            
             const result = await actions.generateRoundRobin({
                 torneoId: torneoId as string,
                 doubleRound: doubleRound
             });
 
+            console.log('🔵 [LeagueFixture] Result received:', result);
+
             if (result.error) {
+                console.error('🔴 [LeagueFixture] Error in result:', result.error);
                 window.showToast(result.error.message, 'error');
-            } else {
-                 if (result.data?.success) {
+            } else if (result.data) {
+                console.log('🟢 [LeagueFixture] Success data:', result.data);
+                if (result.data.success) {
                     window.location.reload();
-                 } else {
-                    window.showToast('Error desconocido al generar fixture', 'error');
-                 }
+                } else {
+                    const errorMsg = result.data.message || 'Error desconocido al generar fixture';
+                    console.error('🔴 [LeagueFixture] Success=false:', errorMsg);
+                    window.showToast(errorMsg, 'error');
+                }
+            } else {
+                console.error('🔴 [LeagueFixture] No data and no error in result');
+                window.showToast('Error desconocido: respuesta vacía del servidor', 'error');
             }
         } catch (err: any) {
-             window.showToast(err.message, 'error');
+            console.error('🔴 [LeagueFixture] Exception caught:', err);
+            window.showToast(err.message || 'Error al generar fixture', 'error');
         } finally {
             if (btn) {
                 btn.disabled = false;

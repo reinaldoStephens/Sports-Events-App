@@ -9,10 +9,12 @@ const supabaseServiceKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Standalone handler for server-side use
 export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { torneoId: string; doubleRound: boolean }): Promise<GenerateFixtureResult> => {
+    console.log('🟦 [RoundRobin] Handler called with:', { torneoId, doubleRound });
     const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
 
     try {
       // 1. Verificar que el torneo existe
+      console.log('🟦 [RoundRobin] Step 1: Checking tournament exists...');
       const { data: torneo, error: torneoError } = await supabase
         .from('torneos')
         .select('id, nombre')
@@ -20,6 +22,7 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
         .single();
 
       if (torneoError || !torneo) {
+        console.error('🔴 [RoundRobin] Tournament not found:', torneoError);
         return {
           success: false,
           message: 'Torneo no encontrado',
@@ -27,7 +30,10 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
         };
       }
 
+      console.log('🟦 [RoundRobin] Tournament found:', torneo.nombre);
+
       // 2. Verificar que no existan jornadas previas
+      console.log('🟦 [RoundRobin] Step 2: Checking for existing jornadas...');
       const { data: jornadasExistentes } = await supabase
         .from('jornadas')
         .select('id')
@@ -35,20 +41,26 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
         .limit(1);
 
       if (jornadasExistentes && jornadasExistentes.length > 0) {
+        console.warn('⚠️ [RoundRobin] Jornadas already exist');
         return {
           success: false,
           message: 'El torneo ya tiene jornadas creadas. Elimina las jornadas existentes antes de generar automáticamente.',
         };
       }
 
+      console.log('🟦 [RoundRobin] No existing jornadas found');
+
       // 3. Obtener equipos inscritos y aprobados
+      console.log('🟦 [RoundRobin] Step 3: Fetching participants...');
       const { data: participantes, error: participantesError } = await supabase
         .from('torneo_participantes')
         .select('equipo_id')
-        .eq('torneo_id', torneoId)
-        .eq('status', 'aprobado');
+        .eq('torneo_id', torneoId);
+        // Note: No status filter - all registered teams are included, matching elimination tournament behavior
+
 
       if (participantesError) {
+        console.error('🔴 [RoundRobin] Error fetching participants:', participantesError);
         return {
           success: false,
           message: 'Error al obtener equipos inscritos',
@@ -56,14 +68,18 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
         };
       }
 
+      console.log('🟦 [RoundRobin] Participants found:', participantes?.length || 0);
+
       if (!participantes || participantes.length < 2) {
+        console.warn('⚠️ [RoundRobin] Not enough participants');
         return {
           success: false,
-          message: 'Se necesitan al menos 2 equipos inscritos y aprobados para generar el fixture.',
+          message: 'Se necesitan al menos 2 equipos inscritos para generar el fixture.',
         };
       }
 
       if (participantes.length % 2 !== 0) {
+        console.warn('⚠️ [RoundRobin] Odd number of participants');
         return {
           success: false,
           message: 'El número de equipos debe ser par. No se admiten BYEs en este momento (todos los equipos deben jugar en cada jornada).',
@@ -71,6 +87,7 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
       }
 
       const equipoIds = participantes.map(p => p.equipo_id);
+      console.log('🟦 [RoundRobin] Team IDs:', equipoIds);
 
       // Shuffle teams for randomization (Fisher-Yates algorithm)
       const shuffledEquipoIds = [...equipoIds];
@@ -80,9 +97,12 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
       }
 
       // 4. Generar fixture usando algoritmo del círculo
+      console.log('🟦 [RoundRobin] Step 4: Generating fixture with doubleRound:', doubleRound);
       const jornadas = generateRoundRobinFixture(shuffledEquipoIds, doubleRound);
+      console.log('🟦 [RoundRobin] Generated jornadas:', jornadas.length);
 
       // 5. Insertar jornadas y partidos en la base de datos
+      console.log('🟦 [RoundRobin] Step 5: Inserting jornadas and partidos...');
       let jornadasCreadas = 0;
       let partidosCreados = 0;
 
@@ -99,6 +119,7 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
           .single();
 
         if (jornadaError || !jornadaCreada) {
+          console.error('🔴 [RoundRobin] Error creating jornada:', jornadaError);
           throw new Error(`Error al crear jornada ${jornada.numero}: ${jornadaError?.message}`);
         }
 
@@ -118,31 +139,39 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
           .insert(partidosToInsert);
 
         if (partidosError) {
+          console.error('🔴 [RoundRobin] Error creating partidos:', partidosError);
           throw new Error(`Error al crear partidos de jornada ${jornada.numero}: ${partidosError.message}`);
         }
 
         partidosCreados += partidosToInsert.length;
       }
 
+      console.log('🟦 [RoundRobin] Created:', { jornadasCreadas, partidosCreados });
+
       // 6. Activar el torneo automáticamente
+      console.log('🟦 [RoundRobin] Step 6: Activating tournament...');
       const { error: activationError } = await supabase
         .from('torneos')
         .update({ estado: 'activo' })
         .eq('id', torneoId);
 
       if (activationError) {
-        console.warn('Error al activar torneo:', activationError);
+        console.warn('⚠️ [RoundRobin] Error activating tournament:', activationError);
+      } else {
+        console.log('🟢 [RoundRobin] Tournament activated successfully');
       }
 
+      const successMessage = `Fixture generado exitosamente: ${jornadasCreadas} jornadas, ${partidosCreados} partidos. Torneo activado.`;
+      console.log('🟢 [RoundRobin] Success:', successMessage);
       return {
         success: true,
-        message: `Fixture generado exitosamente: ${jornadasCreadas} jornadas, ${partidosCreados} partidos. Torneo activado.`,
+        message: successMessage,
         jornadas_creadas: jornadasCreadas,
         partidos_creados: partidosCreados,
       };
 
     } catch (error) {
-      console.error('Error en generateRoundRobin:', error);
+      console.error('🔴 [RoundRobin] Exception in handler:', error);
       return {
         success: false,
         message: `Error al generar fixture: ${error instanceof Error ? error.message : String(error)}`,

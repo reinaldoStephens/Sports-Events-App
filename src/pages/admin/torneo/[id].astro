@@ -344,7 +344,7 @@ const standings = calculateStandings(equipos, matches);
                                         matches.filter((m: Partido) => m.jornada_id === jornada.id).map((match: Partido) => (
                                             <div class="p-4 flex items-center justify-between hover:bg-blue-50/20 transition-colors group">
                                                 <div class="flex items-center gap-4 w-full md:w-2/3">
-                                                    <div class="text-center w-14 flex-shrink-0">
+                                                    <div class="text-center w-14 flex-shrink-0 flex flex-col items-center gap-1">
                                                         {match.fecha_partido ? (
                                                             <>
                                                                 <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(match.fecha_partido).toLocaleDateString(undefined, {weekday: 'short'})}</div>
@@ -353,6 +353,12 @@ const standings = calculateStandings(equipos, matches);
                                                             </>
                                                         ) : (
                                                             <div class="text-[10px] font-black text-slate-300 uppercase tracking-widest leading-tight">Por<br/>Definir</div>
+                                                        )}
+                                                        {/* Badge always shows if finalizado, regardless of fecha */}
+                                                        {match.estado_partido === 'finalizado' && (
+                                                            <span class="bg-green-500 text-white text-[8px] font-black uppercase px-2 py-1 rounded-full shadow-sm mt-1">
+                                                                ✓ Final
+                                                            </span>
                                                         )}
                                                     </div>
                                                     
@@ -1120,11 +1126,14 @@ const standings = calculateStandings(equipos, matches);
         (document.getElementById('edit-match-local') as HTMLSelectElement).value = localId;
         (document.getElementById('edit-match-visitante') as HTMLSelectElement).value = visitanteId;
         
-        if (fecha) {
-            // Convert to datetime-local format
-            const fechaInput = document.getElementById('edit-match-fecha') as HTMLInputElement;
-            if (fechaInput) {
+        const fechaInput = document.getElementById('edit-match-fecha') as HTMLInputElement;
+        if (fechaInput) {
+            if (fecha && fecha !== 'null' && fecha !== '') {
+                // Convert to datetime-local format
                 fechaInput.value = new Date(fecha).toISOString().slice(0, 16);
+            } else {
+                // Clear the input if no fecha
+                fechaInput.value = '';
             }
         }
         
@@ -1446,31 +1455,61 @@ const standings = calculateStandings(equipos, matches);
     const tabBtns = document.querySelectorAll('.jornada-tab-btn');
     const containers = document.querySelectorAll('.jornada-container');
 
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            // 1. Reset all buttons
-            tabBtns.forEach(b => {
-                b.classList.remove('bg-slate-900', 'text-white', 'shadow-lg');
-                b.classList.add('bg-slate-50', 'text-slate-400', 'hover:bg-slate-100');
-            });
+    // Function to activate a specific tab (by ID or Index)
+    function activateTab(targetId: string) {
+        // 1. Reset all buttons
+        tabBtns.forEach(b => {
+            b.classList.remove('bg-slate-900', 'text-white', 'shadow-lg');
+            b.classList.add('bg-slate-50', 'text-slate-400', 'hover:bg-slate-100');
+        });
 
-            // 2. Activate clicked button
+        // 2. Activate target button
+        const btn = document.querySelector(`.jornada-tab-btn[data-target="${targetId}"]`);
+        if (btn) {
             btn.classList.remove('bg-slate-50', 'text-slate-400', 'hover:bg-slate-100');
             btn.classList.add('bg-slate-900', 'text-white', 'shadow-lg');
+            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
 
-            // 3. Show target container
-            const targetId = (btn as HTMLElement).dataset.target;
-            containers.forEach(container => {
-                if (container.id === targetId) {
-                    container.classList.remove('hidden');
-                } else {
-                    container.classList.add('hidden');
-                }
-            });
-            
-            // 4. Smooth scroll to container top if needed (optional)
-            // document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // 3. Show target container
+        containers.forEach(container => {
+            if (container.id === targetId) {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
         });
+    }
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = (btn as HTMLElement).dataset.target;
+            if (targetId) {
+                activateTab(targetId);
+                
+                // Update URL without reloading
+                const url = new URL(window.location.href);
+                // Extract clean ID (remove 'jornada-' prefix if needed, or keep as is.
+                // The IDs are like 'jornada-UUID'. Let's store just the UUID if possible, or the whole string.
+                // Let's store the UUID for cleaner URLs: ?jornada=UUID
+                const jornadaId = targetId.replace('jornada-', '');
+                url.searchParams.set('jornada', jornadaId);
+                window.history.replaceState({}, '', url);
+            }
+        });
+    });
+
+    // Restore tab from URL on load
+    document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const jornadaId = urlParams.get('jornada');
+        if (jornadaId) {
+            const targetId = `jornada-${jornadaId}`;
+            // Verify if exists
+            if (document.getElementById(targetId)) {
+                activateTab(targetId);
+            }
+        }
     });
 
     // Match Events Manager Logic

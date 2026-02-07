@@ -1757,6 +1757,26 @@ export const server = {
 
       if (input.finalizar) {
           await advanceWinner(input.partido_id);
+          
+          // Check if all matches in tournament are finished (for league tournaments)
+          if (torneoData?.tipo === 'liga' || torneoData?.tipo === 'todos_contra_todos') {
+            const { data: allMatches } = await actionSupabase
+              .from('partidos')
+              .select('id, estado_partido')
+              .eq('torneo_id', match.torneo_id);
+            
+            if (allMatches) {
+              const allFinished = allMatches.every(m => m.estado_partido === 'finalizado');
+              
+              if (allFinished && torneoData.estado !== 'finalizado') {
+                // Auto-finalize tournament
+                await actionSupabase
+                  .from('torneos')
+                  .update({ estado: 'finalizado' })
+                  .eq('id', match.torneo_id);
+              }
+            }
+          }
       }
 
       return { success: true };
@@ -2140,6 +2160,76 @@ export const server = {
         totalCount: teamCount
       };
     }
+  }),
+
+  updateMatch: defineAction({
+    accept: 'form',
+    input: z.object({
+      id: z.string().uuid(),
+      equipo_local_id: z.string().uuid(),
+      equipo_visitante_id: z.string().uuid(),
+      fecha_partido: z.string().optional(),
+    }),
+    handler: async (input) => {
+      const supabase = actionSupabase;
+
+      // Validate teams are different
+      if (input.equipo_local_id === input.equipo_visitante_id) {
+        throw new ActionError({
+          code: 'BAD_REQUEST',
+          message: 'Los equipos deben ser diferentes',
+        });
+      }
+
+      // Get current match state
+      const { data: currentMatch } = await supabase
+        .from('partidos')
+        .select('estado_partido, torneo_id')
+        .eq('id', input.id)
+        .single();
+
+      if (!currentMatch) {
+        throw new ActionError({
+          code: 'NOT_FOUND',
+          message: 'Partido no encontrado',
+        });
+      }
+
+      // Get tournament state
+      const { data: torneo } = await supabase
+        .from('torneos')
+        .select('estado')
+        .eq('id', currentMatch.torneo_id)
+        .single();
+
+      // Determine new estado_partido
+      let nuevoEstado = currentMatch.estado_partido;
+      
+      // If tournament is active and match is still pending, transition to en_curso
+      if (torneo?.estado === 'activo' && currentMatch.estado_partido === 'pendiente') {
+        nuevoEstado = 'en_curso';
+      }
+
+      // Update match
+      const { error } = await supabase
+        .from('partidos')
+        .update({
+          equipo_local_id: input.equipo_local_id,
+          equipo_visitante_id: input.equipo_visitante_id,
+          fecha_partido: input.fecha_partido || null,
+          estado_partido: nuevoEstado,
+        })
+        .eq('id', input.id);
+
+      if (error) {
+        throw new ActionError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message,
+        });
+      }
+
+      return { success: true };
+    },
   }),
 
   generateRoundRobin,
