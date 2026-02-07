@@ -65,14 +65,36 @@ export const generateSingleEliminationHandler = async ({ torneoId, useSeeding }:
       }
 
       if (!participantes || participantes.length < 2) {
-        // Warning instead of error for testing
-        console.warn('Generando fixture con menos de 2 equipos (Validación desactivada por usuario)');
+        return {
+          success: false,
+          message: 'Se necesitan al menos 2 equipos inscritos y aprobados para generar el fixture.',
+        };
+      }
+
+      // Check if Power of 2 (2, 4, 8, 16, 32...)
+      // n & (n-1) === 0 for power of 2
+      const n = participantes.length;
+      if (!((n > 0) && ((n & (n - 1)) === 0))) {
+        return {
+            success: false,
+            message: `El número de equipos (${n}) debe ser potencia de 2 (2, 4, 8, 16...) para evitar BYEs.`,
+        };
       }
 
       const equipoIds = participantes.map(p => p.equipo_id);
 
+      // Shuffle teams for randomization if not using seeding
+      let finalEquipoIds = equipoIds;
+      if (!useSeeding) {
+        finalEquipoIds = [...equipoIds];
+        for (let i = finalEquipoIds.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [finalEquipoIds[i], finalEquipoIds[j]] = [finalEquipoIds[j], finalEquipoIds[i]];
+        }
+      }
+
       // 4. Generar bracket de eliminación
-      const bracket = generateSingleEliminationBracket(equipoIds);
+      const bracket = generateSingleEliminationBracket(finalEquipoIds);
 
       // 5. Agrupar partidos por ronda
       const roundsMap = new Map<string, BracketPartido[]>();
@@ -117,48 +139,43 @@ export const generateSingleEliminationHandler = async ({ torneoId, useSeeding }:
             .select('id')
             .single();
 
-        if (jornadaError || !jornada) {
-            throw new Error(`Error al crear jornada ${nombreJornada}: ${jornadaError?.message}`);
+            if (jornadaError || !jornada) {
+                throw new Error(`Error al crear jornada ${nombreJornada}: ${jornadaError?.message}`);
+            }
+            jornadasCreadasCount++;
+
+            // Preparar partidos para insertar
+            const partidosToInsert = matchesInRound.map(match => ({
+                jornada_id: jornada.id,
+                torneo_id: torneoId,
+                equipo_local_id: match.local === 'TBD' ? null : match.local,
+                equipo_visitante_id: match.visitante === 'TBD' ? null : match.visitante,
+                ronda: match.ronda,
+                estado_partido: 'pendiente',
+            }));
+
+            const { data: insertedMatches, error: matchesError } = await supabase
+                .from('partidos')
+                .insert(partidosToInsert)
+                .select('id, ronda');
+
+            if (matchesError || !insertedMatches) {
+                throw new Error(`Error al crear partidos para ${nombreJornada}: ${matchesError?.message}`);
+            }
+
+            // Asociar ID generado con el índice original en el array 'bracket' global
+            insertedMatches.forEach((m, idx) => {
+                 const originalMatchObj = matchesInRound[idx];
+                 const originalIndex = bracket.indexOf(originalMatchObj);
+                 
+                 partidosCreados.push({
+                     id: m.id,
+                     ronda: m.ronda,
+                     originalIndex: originalIndex
+                 });
+            });
         }
-        jornadasCreadasCount++;
 
-        // Preparar partidos para insertar
-        // Necesitamos trackear el índice original para los vínculos
-        const partidosToInsert = matchesInRound.map(partido => ({
-            jornada_id: jornada.id,
-            torneo_id: torneoId,
-            equipo_local_id: partido.local === 'TBD' ? null : partido.local,
-            equipo_visitante_id: partido.visitante === 'TBD' ? null : partido.visitante,
-            ronda: partido.ronda,
-            estado_partido: 'pendiente' as const,
-        }));
-
-        const { data: insertedMatches, error: matchesError } = await supabase
-            .from('partidos')
-            .insert(partidosToInsert)
-            .select('id, ronda');
-
-        if (matchesError || !insertedMatches) {
-            throw new Error(`Error al crear partidos para ${nombreJornada}: ${matchesError?.message}`);
-        }
-
-        // Asociar ID generado con el índice original en el array 'bracket' global
-        // El orden de inserción se conserva, así que podemos mapear por índice relativo
-        insertedMatches.forEach((m, idx) => {
-             // Encontrar el objeto original en 'bracket' para saber su índice global
-             // Esto asume que 'matchesInRound' conserva el orden relativo y 'insertedMatches' también.
-             // Pero 'matchesInRound' es un subconjunto.
-             // Estrategia: Buscar en 'bracket' el partido que coincida exactamente (referencia)
-             const originalMatchObj = matchesInRound[idx];
-             const originalIndex = bracket.indexOf(originalMatchObj);
-             
-             partidosCreados.push({
-                 id: m.id,
-                 ronda: m.ronda,
-                 originalIndex: originalIndex
-             });
-        });
-      }
 
       // 7. Actualizar vínculos siguiente_partido_id
       const partidoIdMap = new Map<number, string>();
@@ -182,9 +199,20 @@ export const generateSingleEliminationHandler = async ({ torneoId, useSeeding }:
         }
       }
 
+      // 8. Activar el torneo automáticamente
+      const { error: activationError } = await supabase
+        .from('torneos')
+        .update({ estado: 'activo' })
+        .eq('id', torneoId);
+
+      if (activationError) {
+        console.warn('Error al activar torneo:', activationError);
+        // Don't fail the whole process, just warn
+      }
+
       return {
         success: true,
-        message: `Bracket generado exitosamente: ${partidosCreados.length} partidos en ${jornadasCreadasCount} rondas`,
+        message: `Bracket generado exitosamente: ${partidosCreados.length} partidos en ${jornadasCreadasCount} rondas. Torneo activado.`,
         jornadas_creadas: jornadasCreadasCount,
         partidos_creados: partidosCreados.length,
       };
@@ -248,10 +276,9 @@ function generateSingleEliminationBracket(equipos: string[]): BracketPartido[] {
     
     if (local && visitante) {
       primeraRondaPartidos.push({ local, visitante });
-    } else if (local && !visitante) {
-      // Bye: el equipo avanza automáticamente
-      primeraRondaPartidos.push(null); // No crear partido, solo placeholder
-    }
+    } 
+    // No else required for matched pairs
+
   }
 
   // Construir bracket completo
@@ -263,10 +290,13 @@ function generateSingleEliminationBracket(equipos: string[]): BracketPartido[] {
     const roundName = getRoundName(currentRound, rounds);
     const matchesInRound = currentRoundMatches.length;
 
+    const startOfRoundIndex = bracket.length;
+    const nextRoundStartIndex = startOfRoundIndex + matchesInRound;
+
     for (let i = 0; i < matchesInRound; i++) {
       const match = currentRoundMatches[i];
       const siguienteIndex = currentRound < rounds 
-        ? partidoIndex + matchesInRound + Math.floor(i / 2)
+        ? nextRoundStartIndex + Math.floor(i / 2)
         : undefined;
 
       bracket.push({

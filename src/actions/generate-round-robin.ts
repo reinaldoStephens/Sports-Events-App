@@ -59,14 +59,28 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
       if (!participantes || participantes.length < 2) {
         return {
           success: false,
-          message: 'Se necesitan al menos 2 equipos aprobados para generar el fixture',
+          message: 'Se necesitan al menos 2 equipos inscritos y aprobados para generar el fixture.',
+        };
+      }
+
+      if (participantes.length % 2 !== 0) {
+        return {
+          success: false,
+          message: 'El número de equipos debe ser par. No se admiten BYEs en este momento (todos los equipos deben jugar en cada jornada).',
         };
       }
 
       const equipoIds = participantes.map(p => p.equipo_id);
 
+      // Shuffle teams for randomization (Fisher-Yates algorithm)
+      const shuffledEquipoIds = [...equipoIds];
+      for (let i = shuffledEquipoIds.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledEquipoIds[i], shuffledEquipoIds[j]] = [shuffledEquipoIds[j], shuffledEquipoIds[i]];
+      }
+
       // 4. Generar fixture usando algoritmo del círculo
-      const jornadas = generateRoundRobinFixture(equipoIds, doubleRound);
+      const jornadas = generateRoundRobinFixture(shuffledEquipoIds, doubleRound);
 
       // 5. Insertar jornadas y partidos en la base de datos
       let jornadasCreadas = 0;
@@ -110,9 +124,19 @@ export const generateRoundRobinHandler = async ({ torneoId, doubleRound }: { tor
         partidosCreados += partidosToInsert.length;
       }
 
+      // 6. Activar el torneo automáticamente
+      const { error: activationError } = await supabase
+        .from('torneos')
+        .update({ estado: 'activo' })
+        .eq('id', torneoId);
+
+      if (activationError) {
+        console.warn('Error al activar torneo:', activationError);
+      }
+
       return {
         success: true,
-        message: `Fixture generado exitosamente: ${jornadasCreadas} jornadas, ${partidosCreados} partidos`,
+        message: `Fixture generado exitosamente: ${jornadasCreadas} jornadas, ${partidosCreados} partidos. Torneo activado.`,
         jornadas_creadas: jornadasCreadas,
         partidos_creados: partidosCreados,
       };
@@ -142,10 +166,8 @@ export const generateRoundRobin = defineAction({
  */
 function generateRoundRobinFixture(equipos: string[], doubleRound: boolean): JornadaGenerada[] {
   const n = equipos.length;
-  const hasOddTeams = n % 2 !== 0;
-  
-  // Si hay equipos impares, agregar un "BYE"
-  const teams = hasOddTeams ? [...equipos, 'BYE'] : [...equipos];
+  // Validation ensures n is even, so no BYEs needed
+  const teams = [...equipos];
   const totalTeams = teams.length;
   const jornadas: JornadaGenerada[] = [];
 

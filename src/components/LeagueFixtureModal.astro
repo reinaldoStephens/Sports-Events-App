@@ -1,0 +1,114 @@
+---
+interface Props {
+  torneoId: string;
+}
+
+const { torneoId } = Astro.props;
+---
+
+<dialog id="league-fixture-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[2rem] p-10 shadow-2xl w-full max-w-md relative backdrop:bg-slate-900/60 focus:outline-none" role="dialog" aria-modal="true" tabindex="-1">
+    <button class="modal-close-btn absolute top-8 right-8 z-10 cursor-pointer text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-200 rounded-full p-1" aria-label="Cerrar">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+    </button>
+    
+    <div class="mb-8">
+        <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-blue-500/30">
+            <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+        </div>
+        <h3 class="text-2xl font-black uppercase tracking-tighter text-slate-900">Generar Fixture</h3>
+        <p class="text-slate-500 font-medium mt-2 leading-relaxed">Configura las opciones para el torneo de liga.</p>
+    </div>
+
+    <form id="league-fixture-form" class="space-y-6">
+        <input type="hidden" name="torneoId" value={torneoId} />
+        
+        <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
+            <label class="flex items-start gap-4 cursor-pointer group">
+                <input type="radio" name="roundType" value="single" checked class="mt-1 w-5 h-5 text-blue-600 border-slate-300 focus:ring-blue-500 transition-all" />
+                <div>
+                    <span class="block text-sm font-black text-slate-900 uppercase tracking-wide group-hover:text-blue-600 transition-colors">Solo Ida</span>
+                    <span class="text-xs text-slate-400 font-medium">Todos contra todos una sola vez.</span>
+                </div>
+            </label>
+            
+            <div class="h-px bg-slate-200"></div>
+
+            <label class="flex items-start gap-4 cursor-pointer group">
+                <input type="radio" name="roundType" value="double" class="mt-1 w-5 h-5 text-purple-600 border-slate-300 focus:ring-purple-500 transition-all" />
+                <div>
+                    <span class="block text-sm font-black text-slate-900 uppercase tracking-wide group-hover:text-purple-600 transition-colors">Ida y Vuelta</span>
+                    <span class="text-xs text-slate-400 font-medium">Partidos de local y visitante.</span>
+                </div>
+            </label>
+        </div>
+
+        <button type="submit" class="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2">
+            <span>Generar Calendario</span>
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+        </button>
+    </form>
+</dialog>
+
+<script>
+    import { actions } from 'astro:actions';
+
+    // Modal Close Logic
+    const modal = document.getElementById('league-fixture-modal') as HTMLDialogElement;
+    const closeBtn = modal?.querySelector('.modal-close-btn');
+
+    closeBtn?.addEventListener('click', () => modal?.close());
+    modal?.addEventListener('click', (e) => {
+        const rect = modal.getBoundingClientRect();
+        const isInDialog = (rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width);
+        if (!isInDialog) modal.close();
+    });
+
+    // Form Submission
+    const form = document.getElementById('league-fixture-form') as HTMLFormElement;
+    form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(form);
+        const roundType = formData.get('roundType');
+        const torneoId = formData.get('torneoId');
+        
+        const doubleRound = roundType === 'double';
+
+        // Disable button
+        const btn = form.querySelector('button');
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-spin mr-2">⏳</span> Generando...';
+        }
+
+        try {
+            const result = await actions.generateRoundRobin({
+                torneoId: torneoId as string,
+                doubleRound: doubleRound
+            });
+
+            if (result.error) {
+                window.showToast(result.error.message, 'error');
+            } else {
+                 if (result.data?.success) {
+                    window.location.reload();
+                 } else {
+                    window.showToast('Error desconocido al generar fixture', 'error');
+                 }
+            }
+        } catch (err: any) {
+             window.showToast(err.message, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+            modal?.close();
+        }
+    });
+
+    // Expose open function
+    (window as any).openLeagueFixtureModal = () => {
+        modal?.showModal();
+    };
+</script>

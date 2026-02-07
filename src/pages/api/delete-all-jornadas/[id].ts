@@ -48,6 +48,16 @@ export const POST: APIRoute = async ({ params, redirect }) => {
       throw deleteError;
     }
 
+    // Revert tournament state to 'pendiente'
+    const { error: updateError } = await supabase
+      .from('torneos')
+      .update({ estado: 'pendiente' })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('Error reverting tournament state:', updateError);
+    }
+
     return new Response(JSON.stringify({ 
       success: true, 
       message: 'Todas las jornadas fueron eliminadas' 

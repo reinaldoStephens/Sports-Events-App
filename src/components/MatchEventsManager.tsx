@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { actions } from 'astro:actions';
+import CascadeWarningModal from './CascadeWarningModal';
 
 interface Player {
   numero_cedula: string;
@@ -23,6 +24,16 @@ interface MatchData {
   equipoLocalNombre: string;
   equipoVisitanteId: string;
   equipoVisitanteNombre: string;
+  estadoPartido: 'pendiente' | 'en_curso' | 'finalizado';
+  estadoTorneo: 'pendiente' | 'activo' | 'finalizado' | 'cancelado';
+  tipoTorneo: string;
+}
+
+interface PendingSaveData {
+  finalizar: boolean;
+  newLocalScore: number;
+  newVisitorScore: number;
+  deleteEventIds?: string[];
 }
 
 export default function MatchEventsManager() {
@@ -36,19 +47,29 @@ export default function MatchEventsManager() {
   const [jugadorSeleccionado, setJugadorSeleccionado] = useState('');
   const [minuto, setMinuto] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
+  
+  // Cascade reversion state
+  const [showCascadeModal, setShowCascadeModal] = useState(false);
+  const [cascadeData, setCascadeData] = useState<any>(null);
+  const [pendingSaveData, setPendingSaveData] = useState<PendingSaveData | null>(null);
 
   useEffect(() => {
     const handleOpen = (event: CustomEvent) => {
-      const { match, events, allPlayers } = event.detail;
+      const { match, events, allPlayers, torneoEstado, torneoTipo } = event.detail;
       setMatchData({
         partidoId: match.id,
         equipoLocalId: match.equipo_local_id,
-        equipoLocalNombre: match.local.nombre,
+        equipoLocalNombre: match.local?.nombre || match.equipo_local?.nombre || 'Local',
         equipoVisitanteId: match.equipo_visitante_id,
-        equipoVisitanteNombre: match.visitante.nombre
+        equipoVisitanteNombre: match.visitante?.nombre || match.equipo_visitante?.nombre || 'Visitante',
+        estadoPartido: match.estado_partido, // Assuming match object has estado_partido
+        estadoTorneo: torneoEstado,
+        tipoTorneo: torneoTipo
       });
       setEventos(events || []);
       setPendingEvents([]); // Reset pending
+      setSelectedEventIds([]); // Reset selection
       setPlayers(allPlayers || []);
       setIsOpen(true);
       
@@ -62,6 +83,109 @@ export default function MatchEventsManager() {
     return () => window.removeEventListener('open-match-manager', handleOpen as any);
   }, []);
 
+  const handleToggleSelect = (id: string) => {
+      setSelectedEventIds(prev => 
+          prev.includes(id) ? prev.filter(eid => eid !== id) : [...prev, id]
+      );
+  };
+
+  const handleBulkDelete = () => {
+       if (selectedEventIds.length === 0) return;
+       
+       const showConfirm = (window as any).showConfirm;
+       const confirmMsg = `¿Eliminar ${selectedEventIds.length} eventos seleccionados?`;
+       
+       const executeDelete = async () => {
+           setLoading(true);
+           try {
+               // Separate pending vs server
+               const pendingToDelete = selectedEventIds.filter(id => id.startsWith('pending-'));
+               const serverToDelete = selectedEventIds.filter(id => !id.startsWith('pending-'));
+               
+               // Delete pending (no cascade check needed)
+               if (pendingToDelete.length > 0) {
+                   const newPending = pendingEvents.filter((_, idx) => !pendingToDelete.includes(`pending-${idx}`));
+                   setPendingEvents(newPending);
+               }
+
+               // Check if deleting server events affects finalized match
+               if (serverToDelete.length > 0) {
+                 // Check if any deleted events are goals
+                 const deletedGoals = eventos.filter(e => 
+                   serverToDelete.includes(e.id) && e.tipo_evento === 'gol'
+                 );
+
+                 // If deleting goals from a finalized match, check cascade impact
+                 if (deletedGoals.length > 0 && matchData?.estadoPartido === 'finalizado') {
+                   // Calculate new scores after deletion
+                   const remainingGoalsLocal = allEvents.filter(e => 
+                     !serverToDelete.includes(e.id) && 
+                     e.equipo_id === matchData.equipoLocalId && 
+                     e.tipo_evento === 'gol'
+                   ).length;
+                   
+                   const remainingGoalsVisitor = allEvents.filter(e => 
+                     !serverToDelete.includes(e.id) && 
+                     e.equipo_id === matchData.equipoVisitanteId && 
+                     e.tipo_evento === 'gol'
+                   ).length;
+
+                   // Check for cascade impact with new scores
+                   const impactFormData = new FormData();
+                   impactFormData.append('match_id', matchData.partidoId);
+                   impactFormData.append('new_local_score', remainingGoalsLocal.toString());
+                   impactFormData.append('new_visitor_score', remainingGoalsVisitor.toString());
+                   
+                   const { data: impactData, error: impactError } = await actions.checkMatchImpact(impactFormData);
+                   
+                   if (impactError) {
+                     alert('Error al verificar impacto: ' + impactError.message);
+                     setLoading(false);
+                     return;
+                   }
+                   
+                   if (impactData?.hasImpact) {
+                     // Show cascade warning modal
+                     setCascadeData(impactData);
+                     setPendingSaveData({ 
+                       finalizar: true, 
+                       newLocalScore: remainingGoalsLocal, 
+                       newVisitorScore: remainingGoalsVisitor,
+                       deleteEventIds: serverToDelete 
+                     });
+                     setShowCascadeModal(true);
+                     setLoading(false);
+                     return;
+                   }
+                 }
+
+                 // No cascade impact, proceed with normal deletion
+                 const formData = new FormData();
+                 serverToDelete.forEach(id => formData.append('ids', id));
+                 
+                 const { error } = await actions.deleteMatchEvents(formData);
+                 if (error) throw error;
+               }
+
+               const currentUrl = new URL(window.location.href);
+               currentUrl.searchParams.set('msg', 'Eventos eliminados');
+               currentUrl.searchParams.set('type', 'success');
+               window.location.href = currentUrl.toString();
+
+           } catch (err: any) {
+               alert(err.message);
+               setLoading(false);
+           }
+       };
+
+       if (typeof showConfirm === 'function') {
+           showConfirm('Eliminar Eventos', confirmMsg, executeDelete);
+       } else {
+           if (confirm(confirmMsg)) executeDelete();
+       }
+  };
+
+  // Early return if not open
   if (!isOpen || !matchData) return null;
 
   // Merge server events with pending events for display
@@ -76,12 +200,18 @@ export default function MatchEventsManager() {
 
   const sortedEvents = allEvents.sort((a, b) => a.minuto - b.minuto);
   
+  // Check if form should be disabled (elimination tournament in pendiente state)
+  const isFormDisabled = matchData && 
+    (matchData.tipoTorneo === 'eliminacion_simple' || matchData.tipoTorneo === 'grupos_eliminacion') && 
+    matchData.estadoTorneo === 'pendiente';
+  
   // Filter players for selected team
   const jugadoresDisponibles = players.filter(p => p.equipo_id === equipoSeleccionado);
 
   // Calculate score (Server + Pending)
   const golesLocal = allEvents.filter(e => e.equipo_id === matchData.equipoLocalId && e.tipo_evento === 'gol').length;
   const golesVisitante = allEvents.filter(e => e.equipo_id === matchData.equipoVisitanteId && e.tipo_evento === 'gol').length;
+
 
   const handleAddEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +231,6 @@ export default function MatchEventsManager() {
     // Reset form
     setMinuto('');
     setJugadorSeleccionado('');
-    // Keep team selected for convenience or reset? Let's keep team.
   };
 
   const handleDeleteEvent = (eventId: string) => {
@@ -114,7 +243,7 @@ export default function MatchEventsManager() {
         return;
     }
 
-    // Normal server delete (keep existing logic)
+    // Normal server delete
     const showConfirm = (window as any).showConfirm;
     
     if (typeof showConfirm === 'function') {
@@ -139,19 +268,50 @@ export default function MatchEventsManager() {
         }
       });
     } else {
-        // Fallback...
         if (!confirm('Eliminar gol?')) return;
-        // ... (reuse same logic if needed, but showConfirm should exist)
     }
   };
 
   const handleSaveChanges = async () => {
-      // Allow save even if no events, if we want to finalize
       setLoading(true);
 
       try {
           const finalizar = (document.getElementById('check-finalizar-events') as HTMLInputElement)?.checked;
           
+          // Calculate new scores from all events (server + pending)
+          const newLocalScore = allEvents.filter(e => e.equipo_id === matchData.equipoLocalId && e.tipo_evento === 'gol').length;
+          const newVisitorScore = allEvents.filter(e => e.equipo_id === matchData.equipoVisitanteId && e.tipo_evento === 'gol').length;
+          
+          // Check if this is a finalized match being changed (has existing scores)
+          // A match is considered finalized if its estadoPartido is 'finalizado'
+          const isMatchFinalized = matchData.estadoPartido === 'finalizado';
+          
+          if (isMatchFinalized && finalizar) {
+            // Check for cascade impact
+            const impactFormData = new FormData();
+            impactFormData.append('match_id', matchData.partidoId);
+            impactFormData.append('new_local_score', newLocalScore.toString());
+            impactFormData.append('new_visitor_score', newVisitorScore.toString());
+            
+            const { data: impactData, error: impactError } = await actions.checkMatchImpact(impactFormData);
+            
+            if (impactError) {
+              alert('Error al verificar impacto: ' + impactError.message);
+              setLoading(false);
+              return;
+            }
+            
+            if (impactData?.hasImpact) {
+              // Show cascade warning modal
+              setCascadeData(impactData);
+              setPendingSaveData({ finalizar, newLocalScore, newVisitorScore });
+              setShowCascadeModal(true);
+              setLoading(false);
+              return;
+            }
+          }
+          
+          // Normal save flow (no cascade needed)
           const formData = new FormData();
           formData.append('partido_id', matchData.partidoId);
           formData.append('events', JSON.stringify(pendingEvents));
@@ -160,6 +320,15 @@ export default function MatchEventsManager() {
           const { error } = await actions.batchSaveMatchEvents(formData);
           
           if (error) {
+              // Check if it's a tournament state error
+              if (error.message.includes('torneo pendiente') || error.message.includes('torneo debe estar activo')) {
+                const currentUrl = new URL(window.location.href);
+                currentUrl.searchParams.set('msg', error.message);
+                currentUrl.searchParams.set('type', 'error');
+                window.location.href = currentUrl.toString();
+                return;
+              }
+              
               alert(error.message);
               setLoading(false);
           } else {
@@ -169,9 +338,92 @@ export default function MatchEventsManager() {
             window.location.href = currentUrl.toString();
           }
       } catch (err: any) {
+          // Check if it's a tournament state error
+          if (err.message && (err.message.includes('torneo pendiente') || err.message.includes('torneo debe estar activo'))) {
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('msg', err.message);
+            currentUrl.searchParams.set('type', 'error');
+            window.location.href = currentUrl.toString();
+            return;
+          }
+          
           alert(err.message);
           setLoading(false);
       }
+  };
+  
+  const handleCascadeConfirm = async () => {
+    setShowCascadeModal(false);
+    setLoading(true);
+    
+    if (!pendingSaveData) {
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      // Execute cascade reversion
+      const cascadeFormData = new FormData();
+      cascadeFormData.append('match_id', matchData!.partidoId);
+      cascadeFormData.append('new_local_score', pendingSaveData.newLocalScore.toString());
+      cascadeFormData.append('new_visitor_score', pendingSaveData.newVisitorScore.toString());
+      cascadeFormData.append('confirmed', 'true');
+      
+      const { data: cascadeResult, error: cascadeError } = await actions.revertMatchWithCascade(cascadeFormData);
+      
+      if (cascadeError) {
+        alert('Error en reversión en cascada: ' + cascadeError.message);
+        setLoading(false);
+        return;
+      }
+      
+      // Check if this is a delete operation
+      if (pendingSaveData.deleteEventIds && pendingSaveData.deleteEventIds.length > 0) {
+        // Delete the events
+        const deleteFormData = new FormData();
+        pendingSaveData.deleteEventIds.forEach(id => deleteFormData.append('ids', id));
+        
+        const { error: deleteError } = await actions.deleteMatchEvents(deleteFormData);
+        
+        if (deleteError) {
+          alert(deleteError.message);
+          setLoading(false);
+          return;
+        }
+        
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('msg', `Eventos eliminados. ${cascadeResult?.resetMatches || 0} partidos reseteados.`);
+        currentUrl.searchParams.set('type', 'success');
+        window.location.href = currentUrl.toString();
+      } else {
+        // Save new events (original flow)
+        const formData = new FormData();
+        formData.append('partido_id', matchData!.partidoId);
+        formData.append('events', JSON.stringify(pendingEvents));
+        if (pendingSaveData.finalizar) formData.append('finalizar', 'true');
+        
+        const { error } = await actions.batchSaveMatchEvents(formData);
+        
+        if (error) {
+          alert(error.message);
+          setLoading(false);
+        } else {
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.set('msg', `Resultado actualizado. ${cascadeResult?.resetMatches || 0} partidos reseteados.`);
+          currentUrl.searchParams.set('type', 'success');
+          window.location.href = currentUrl.toString();
+        }
+      }
+    } catch (err: any) {
+      alert(err.message);
+      setLoading(false);
+    }
+  };
+  
+  const handleCascadeCancel = () => {
+    setShowCascadeModal(false);
+    setCascadeData(null);
+    setPendingSaveData(null);
   };
 
   return (
@@ -214,12 +466,26 @@ export default function MatchEventsManager() {
 
           {/* Events List */}
           <div className="space-y-4">
-             <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Historial</h4>
+             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Historial</h4>
+                 {selectedEventIds.length > 0 && (
+                     <button onClick={handleBulkDelete} className="text-xs font-black text-red-500 uppercase tracking-widest hover:underline">
+                         Eliminar Seleccionados ({selectedEventIds.length})
+                     </button>
+                 )}
+             </div>
+             
              {sortedEvents.length > 0 ? (
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                   {sortedEvents.map((evento) => (
-                    <div key={evento.id} className={`flex items-center justify-between p-3 rounded-xl border transition-colors shadow-sm ${evento.id.startsWith('pending') ? 'bg-yellow-50 border-yellow-200' : 'bg-white border-slate-100 hover:border-blue-200'}`}>
+                    <div key={evento.id} className={`flex items-center justify-between p-3 rounded-xl border transition-colors shadow-sm ${selectedEventIds.includes(evento.id) ? 'bg-red-50 border-red-200 ring-1 ring-red-200' : (evento.id.startsWith('pending') ? 'bg-yellow-50 border-yellow-200' : 'bg-white border-slate-100 hover:border-blue-200')}`}>
                       <div className="flex items-center gap-4">
+                         <input 
+                            type="checkbox" 
+                            checked={selectedEventIds.includes(evento.id)}
+                            onChange={() => handleToggleSelect(evento.id)}
+                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                        />
                         <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm border ${evento.id.startsWith('pending') ? 'bg-yellow-100 text-yellow-700 border-yellow-200' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                           {evento.minuto}'
                         </span>
@@ -232,24 +498,6 @@ export default function MatchEventsManager() {
                           </p>
                         </div>
                       </div>
-                      
-                      {!evento.id.startsWith('pending') ? (
-                          <button 
-                            onClick={() => handleDeleteEvent(evento.id)}
-                            disabled={loading}
-                            className="text-red-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all"
-                          >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          </button>
-                      ) : (
-                          <button 
-                            onClick={() => handleDeleteEvent(evento.id)}
-                            className="text-slate-400 hover:text-red-500 p-2"
-                            title="Quitar (no guardado)"
-                          >
-                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                          </button>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -271,7 +519,8 @@ export default function MatchEventsManager() {
                         setJugadorSeleccionado('');
                       }}
                       required
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      disabled={isFormDisabled}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 disabled:bg-slate-100 disabled:cursor-not-allowed"
                    >
                       <option value="">Seleccionar Equipo...</option>
                       <option value={matchData.equipoLocalId}>{matchData.equipoLocalNombre}</option>
@@ -284,8 +533,8 @@ export default function MatchEventsManager() {
                       value={jugadorSeleccionado}
                       onChange={(e) => setJugadorSeleccionado(e.target.value)}
                       required
-                      disabled={!equipoSeleccionado}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 disabled:bg-slate-100"
+                      disabled={!equipoSeleccionado || isFormDisabled}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 disabled:bg-slate-100 disabled:cursor-not-allowed"
                    >
                       <option value="">Jugador...</option>
                       {jugadoresDisponibles.map(j => (
@@ -305,47 +554,71 @@ export default function MatchEventsManager() {
                       max="130"
                       placeholder="Min"
                       required
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-center text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                   />
-                </div>
-             </div>
-
-             <div className="flex gap-4">
-                 <button 
-                    type="submit"
-                    className="flex-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-sm transition-all"
-                 >
-                    Agregar a la lista
-                 </button>
-             </div>
+                       disabled={isFormDisabled}
+                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-center text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                    />
+                 </div>
+              </div>
+              
+              <button 
+                 type="submit"
+                 disabled={isFormDisabled}
+                 className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-blue-600 disabled:hover:to-blue-700"
+              >
+                 ⚽ Agregar Gol
+              </button>
+              
+              {isFormDisabled && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
+                  ⚠️ El torneo debe estar activo para agregar eventos. Asigna todos los equipos a partidos en la primera jornada.
+                </p>
+              )}
           </form>
 
-
-          {/* Global Save Button */}
-          {(pendingEvents.length > 0 || true) && (
-              <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col items-center gap-3 w-full px-4 max-w-md">
-                   {/* Finalize Checkbox */}
-                   <div className="bg-white px-6 py-3 rounded-full shadow-xl border border-blue-100 flex items-center gap-3 w-fit">
-                        <input type="checkbox" id="check-finalizar-events" className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" />
-                        <label htmlFor="check-finalizar-events" className="text-xs font-bold text-slate-700 uppercase tracking-wide cursor-pointer select-none">
-                            Finalizar Partido
-                        </label>
-                   </div>
-
-                  <button
-                      onClick={handleSaveChanges}
-                      disabled={loading}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-500/40 flex items-center gap-3 transition-all active:scale-95 hover:scale-105 w-full justify-center"
+          {/* Save Section - Static below form */}
+          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4 mt-6">
+              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Guardar Cambios</h4>
+              
+              {/* Finalize Checkbox */}
+              <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-200">
+                  <input 
+                      type="checkbox" 
+                      id="check-finalizar-events" 
+                      disabled={isFormDisabled}
+                      className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed" 
+                  />
+                  <label 
+                      htmlFor="check-finalizar-events" 
+                      className={`text-sm font-bold text-slate-700 cursor-pointer select-none ${isFormDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                      <span>Guardar Cambios</span>
-
-                      {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
-                  </button>
+                      Finalizar Partido
+                  </label>
               </div>
-          )}
+
+              <button
+                  onClick={handleSaveChanges}
+                  disabled={loading || isFormDisabled}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-blue-600 disabled:hover:to-blue-700"
+              >
+                  <span>💾 Guardar Cambios</span>
+                  {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+              </button>
+          </div>
+
 
         </div>
       </div>
+      
+      {/* Cascade Warning Modal */}
+      {showCascadeModal && cascadeData && (
+        <CascadeWarningModal
+          isOpen={showCascadeModal}
+          affectedMatches={cascadeData.affectedMatches || []}
+          totalEvents={cascadeData.totalEvents || 0}
+          onConfirm={handleCascadeConfirm}
+          onCancel={handleCascadeCancel}
+        />
+      )}
     </div>
   );
 }

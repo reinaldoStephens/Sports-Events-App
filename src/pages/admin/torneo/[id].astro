@@ -3,6 +3,8 @@ import AdminSidebarLayout from '../../../layouts/AdminSidebarLayout.astro';
 import SmartImage from '../../../components/SmartImage.astro';
 import StandingsTable from '../../../components/StandingsTable.astro';
 import MatchEventsManager from '../../../components/MatchEventsManager.tsx';
+import ConfirmationModal from '../../../components/ConfirmationModal.astro';
+import LeagueFixtureModal from '../../../components/LeagueFixtureModal.astro';
 import { supabase } from '../../../lib/supabase';
 import { calculateStandings } from '../../../lib/standings';
 
@@ -200,6 +202,9 @@ const standings = calculateStandings(equipos, matches);
             <a href={`/torneo/${id}`} target="_blank" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 transition-all">
                 Ver Público
             </a>
+            <button onclick={`deleteItem('Tournament', '${id}')`} class="px-3 py-3 bg-red-50 hover:bg-red-100 text-red-500 border border-red-100 hover:border-red-200 rounded-xl transition-all" title="Eliminar Torneo">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
         </div>
     </div>
 
@@ -235,7 +240,7 @@ const standings = calculateStandings(equipos, matches);
                 <h3 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Últimos Resultados</h3>
                 <div class="space-y-3">
                     {matches.slice(0, 5).map((match: Partido) => (
-                        <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-blue-200 transition-colors cursor-pointer" onclick={`openEditResultModal('${match.id}', '${match.local?.nombre}', '${match.visitante?.nombre}', ${match.puntos_local || 0}, ${match.puntos_visitante || 0})`}>
+                        <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div class="flex items-center gap-4 text-xs font-bold text-slate-600">
                                 <span class="bg-slate-100 px-2 py-1 rounded text-[9px] uppercase tracking-widest">{match.jornada?.nombre_fase || 'Jornada ' + match.jornada?.numero_jornada}</span>
                                 <span>{match.local?.nombre}</span>
@@ -244,7 +249,6 @@ const standings = calculateStandings(equipos, matches);
                                 <span class="font-black text-slate-900">{match.puntos_visitante ?? '-'}</span>
                                 <span>{match.visitante?.nombre}</span>
                             </div>
-                            <svg class="w-4 h-4 text-slate-300 group-hover:text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                         </div>
                     ))}
                      {matches.length === 0 && <p class="text-slate-400 text-sm">No hay partidos registrados.</p>}
@@ -377,15 +381,23 @@ const standings = calculateStandings(equipos, matches);
                                                 </div>
                                                 
                                                 <div class="hidden md:flex flex-col items-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onclick={`openEditMatchModal('${match.id}', '${match.equipo_local_id}', '${match.equipo_visitante_id}', '${match.fecha_partido || ''}')`} class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 w-full text-center">
-                                                        ⚙️ Editar Partido
-                                                    </button>
-                                                    <button onclick={`openMatchManager('${match.id}')`} class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-200 w-full text-center">
-                                                        📊 Goles y Eventos
-                                                    </button>
-                                                    <button onclick={`deleteItem('Match', '${match.id}')`} class="px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors w-full text-center">
-                                                        Eliminar
-                                                    </button>
+                                                    {torneo.estado === 'finalizado' ? (
+                                                        <div class="px-3 py-1.5 bg-slate-50 text-slate-400 rounded-lg text-[10px] font-black uppercase tracking-widest w-full text-center flex items-center justify-center gap-1">
+                                                            🔒 Torneo Finalizado
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <button onclick={`openEditMatchModal('${match.id}', '${match.equipo_local_id}', '${match.equipo_visitante_id}', '${match.fecha_partido || ''}')`} class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 w-full text-center">
+                                                                ⚙️ Editar Partido
+                                                            </button>
+                                                            <button onclick={`openMatchManager('${match.id}')`} class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-200 w-full text-center">
+                                                                📊 Goles y Eventos
+                                                            </button>
+                                                            <button onclick={`deleteItem('Match', '${match.id}')`} class="px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors w-full text-center">
+                                                                Eliminar
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         )) : (
@@ -416,9 +428,15 @@ const standings = calculateStandings(equipos, matches);
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
             <div class="flex justify-between items-center">
                 <h3 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Equipos Inscritos</h3>
-                <button onclick="document.getElementById('new-team-modal').showModal()" class="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-slate-800 transition-all">
-                    + Inscribir Equipo
-                </button>
+                {(torneo.tipo === 'eliminacion_simple' || torneo.tipo === 'grupos_eliminacion') && torneo.estado !== 'pendiente' ? (
+                    <div class="px-4 py-2 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed flex items-center gap-2 border border-slate-200" title="El torneo ya ha comenzado">
+                        🔒 Inscripción Cerrada
+                    </div>
+                ) : (
+                    <button onclick="document.getElementById('new-team-modal').showModal()" class="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-slate-800 transition-all">
+                        + Inscribir Equipo
+                    </button>
+                )}
             </div>
             
             <div class="overflow-x-auto bg-white rounded-2xl border border-slate-100 shadow-sm">
@@ -463,13 +481,23 @@ const standings = calculateStandings(equipos, matches);
                                             Gestionar
                                             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
                                         </a>
-                                        <button 
-                                            onclick={`deleteItem('TeamParticipation', '${equipo.id}')`}
-                                            class="p-2 bg-white border border-slate-200 text-slate-400 rounded-lg hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
-                                            title="Desinscribir del torneo"
-                                        >
-                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        </button>
+                                        {(torneo.tipo === 'eliminacion_simple' || torneo.tipo === 'grupos_eliminacion') && torneo.estado !== 'pendiente' ? (
+                                            <button 
+                                                disabled 
+                                                class="p-2 bg-slate-50 border border-slate-100 text-slate-300 rounded-lg cursor-not-allowed"
+                                                title="Desinscripción no permitida en torneos iniciados"
+                                            >
+                                                 🔒
+                                            </button>
+                                        ) : (
+                                            <button 
+                                                onclick={`deleteItem('TeamParticipation', '${equipo.id}')`}
+                                                class="p-2 bg-white border border-slate-200 text-slate-400 rounded-lg hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
+                                                title="Desinscribir del torneo"
+                                            >
+                                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            </button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
@@ -478,7 +506,13 @@ const standings = calculateStandings(equipos, matches);
                              <tr>
                                 <td colspan="3" class="px-6 py-12 text-center bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-b-2xl">
                                     <p class="text-slate-400 font-bold mb-2">No hay equipos inscritos</p>
-                                    <button onclick="document.getElementById('new-team-modal').showModal()" class="text-blue-600 font-black uppercase text-xs tracking-widest hover:underline">Inscribir Primer Equipo</button>
+                                    {(torneo.tipo === 'eliminacion_simple' || torneo.tipo === 'grupos_eliminacion') && torneo.estado !== 'pendiente' ? (
+                                         <p class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-2 inline-block font-bold">
+                                            🔒 Inscripción Cerrada (Torneo Iniciado)
+                                        </p>
+                                    ) : (
+                                        <button onclick="document.getElementById('new-team-modal').showModal()" class="text-blue-600 font-black uppercase text-xs tracking-widest hover:underline">Inscribir Primer Equipo</button>
+                                    )}
                                 </td>
                             </tr>
                         )}
@@ -552,11 +586,33 @@ const standings = calculateStandings(equipos, matches);
                 <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Descripción</label>
                 <textarea name="descripcion" class="w-full bg-slate-50 border-none px-6 py-4 rounded-2xl font-medium text-slate-600 h-24">{torneo.descripcion}</textarea>
             </div>
+            
+             <div class="grid grid-cols-2 gap-4">
+                 <div class="space-y-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Fecha Inicio</label>
+                    <input 
+                        type="date" 
+                        name="fecha_inicio" 
+                        class="w-full bg-slate-50 border-none px-6 py-4 rounded-2xl font-bold text-slate-900"
+                        value={torneo.fecha_inicio ? new Date(torneo.fecha_inicio).toISOString().split('T')[0] : ''} 
+                    />
+                 </div>
+                 <div class="space-y-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Fecha Fin</label>
+                    <input 
+                        type="date" 
+                        name="fecha_fin" 
+                        class="w-full bg-slate-50 border-none px-6 py-4 rounded-2xl font-bold text-slate-900" 
+                        value={torneo.fecha_fin ? new Date(torneo.fecha_fin).toISOString().split('T')[0] : ''}
+                    />
+                 </div>
+             </div>
+
             <div class="grid grid-cols-2 gap-4">
                 <div class="space-y-1">
                     <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Estado</label>
                     <select name="estado" class="w-full bg-slate-50 border-none px-6 py-4 rounded-2xl font-bold text-slate-900">
-                        <option value="draft" selected={torneo.estado === 'draft'}>Borrador</option>
+                        <option value="pendiente" selected={torneo.estado === 'pendiente'}>Pendiente (Borrador)</option>
                         <option value="activo" selected={torneo.estado === 'activo'}>Activo</option>
                         <option value="finalizado" selected={torneo.estado === 'finalizado'}>Finalizado</option>
                     </select>
@@ -704,41 +760,6 @@ const standings = calculateStandings(equipos, matches);
         </form>
     </dialog>
 
-    <!-- Match Result Modal -->
-    <dialog id="edit-result-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-10 shadow-2xl w-full max-w-sm relative backdrop:bg-slate-900/60 focus:outline-none" role="dialog" aria-modal="true" aria-labelledby="modal-title-result" tabindex="-1">
-        <button onclick="document.getElementById('edit-result-modal').close()" class="modal-close-btn absolute top-8 right-8 z-10 cursor-pointer text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-200 rounded-full p-1" aria-label="Cerrar"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
-        <h3 id="modal-title-result" class="text-2xl font-black uppercase tracking-tighter mb-8 text-slate-900">Actualizar Marcador</h3>
-        <form id="edit-result-form" class="space-y-6">
-            <input type="hidden" name="matchId" id="edit-match-id" />
-            
-            <div class="flex items-center justify-between gap-4">
-                <div class="text-center w-1/2">
-                    <label id="edit-label-local" class="block text-xs font-bold text-slate-500 mb-2 truncate">Local</label>
-                    <input type="number" name="puntos_local" id="edit-goles-local" min="0" required class="w-full bg-slate-50 border-none rounded-2xl py-4 text-center font-black text-3xl text-slate-900" />
-                </div>
-                <div class="text-slate-300 font-black text-xl">-</div>
-                <div class="text-center w-1/2">
-                    <label id="edit-label-visitante" class="block text-xs font-bold text-slate-500 mb-2 truncate">Visitante</label>
-                    <input type="number" name="puntos_visitante" id="edit-goles-visitante" min="0" required class="w-full bg-slate-50 border-none rounded-2xl py-4 text-center font-black text-3xl text-slate-900" />
-                </div>
-            </div>
-
-            <div class="flex items-center gap-3 p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                <input type="checkbox" name="finalizar" id="check-finalizar" class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" />
-                <label for="check-finalizar" class="text-xs font-bold text-blue-800 uppercase tracking-wide cursor-pointer select-none">
-                    Marcador Final (Finalizar Partido)
-                </label>
-            </div>
-            
-            <p class="text-[10px] text-slate-400 text-center px-4">
-                Si marcas "Finalizar", el ganador avanzará automáticamente a la siguiente ronda en torneos de eliminación.
-            </p>
-
-            <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg hover:scale-[1.02] transition-all">
-                Guardar Resultado
-            </button>
-        </form>
-    </dialog>
 
     <!-- Edit Match Modal (Teams & Date) -->
     <dialog id="edit-match-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-8 shadow-2xl w-full max-w-md relative backdrop:bg-slate-900/60 focus:outline-none" role="dialog" aria-modal="true" aria-labelledby="modal-title-edit-match" tabindex="-1">
@@ -888,7 +909,6 @@ const standings = calculateStandings(equipos, matches);
 
     declare global {
         interface Window {
-            openEditResultModal: (matchId: string, localName: string, visitanteName: string, gLocal: number, gVisitante: number) => void;
             deleteItem: (type: string, id: string) => Promise<void>;
             closeModal: (id: string) => void;
             showToast: (message: string, type?: 'success' | 'error') => void;
@@ -909,16 +929,6 @@ const standings = calculateStandings(equipos, matches);
             window.history.replaceState({}, '', newUrl || window.location.pathname);
         }
     });
-
-    // Helpers
-    window.openEditResultModal = (matchId: string, localName: string, visitanteName: string, gLocal: number, gVisitante: number) => {
-        (document.getElementById('edit-match-id') as HTMLInputElement).value = matchId;
-        (document.getElementById('edit-label-local') as HTMLElement).textContent = localName;
-        (document.getElementById('edit-label-visitante') as HTMLElement).textContent = visitanteName;
-        (document.getElementById('edit-goles-local') as HTMLInputElement).value = gLocal.toString();
-        (document.getElementById('edit-goles-visitante') as HTMLInputElement).value = gVisitante.toString();
-        (document.getElementById('edit-result-modal') as HTMLDialogElement).showModal();
-    };
 
 
     window.deleteItem = async (type: string, id: string) => {
@@ -1165,8 +1175,21 @@ const standings = calculateStandings(equipos, matches);
     if (generateFixtureBtn) {
         generateFixtureBtn.addEventListener('click', async () => {
             const torneoTipo = generateFixtureBtn.dataset.tipo;
-            const torneoNombre = generateFixtureBtn.dataset.nombre;
             const torneoId = generateFixtureBtn.dataset.id;
+            
+            // New League Logic: Open Modal
+            if (torneoTipo === 'liga') {
+                if ((window as any).openLeagueFixtureModal) {
+                    (window as any).openLeagueFixtureModal();
+                } else {
+                    console.error('LeagueFixtureModal not found');
+                    alert('Error: No se puede abrir el modal de configuración.');
+                }
+                return;
+            }
+
+            // Existing Logic for Elimination
+            const torneoNombre = generateFixtureBtn.dataset.nombre;
             
             const confirmMsg = torneoTipo === 'liga' 
                 ? `¿Generar fixture automático para "${torneoNombre}"?\n\nSe crearán todas las jornadas y partidos del torneo tipo Liga (Round-Robin).`
@@ -1452,24 +1475,83 @@ const standings = calculateStandings(equipos, matches);
 
     // Match Events Manager Logic
     window.openMatchManager = (matchId) => {
-        const { matches, allEvents, allPlayers } = window.MATCH_DATA;
-        const match = matches.find(m => m.id === matchId);
-        if (!match) return;
-        
-        const events = allEvents.filter(e => e.partido_id === matchId);
-        
-        // Dispatch event to open React modal
-        window.dispatchEvent(new CustomEvent('open-match-manager', {
-            detail: { match, events, allPlayers }
-        }));
+        console.log('Opening match manager for:', matchId);
+        try {
+            if (!window.MATCH_DATA) {
+                console.error('MATCH_DATA not found on window object');
+                return;
+            }
+            
+            const { matches, allEvents, allPlayers } = window.MATCH_DATA;
+            // console.log('Data available:', { matchesCount: matches?.length, eventsCount: allEvents?.length, playersCount: allPlayers?.length });
+
+            const match = matches.find(m => m.id === matchId);
+            if (!match) {
+                console.error('Match not found in data:', matchId);
+                return;
+            }
+            
+            const events = allEvents ? allEvents.filter(e => e.partido_id === matchId) : [];
+            
+            console.log('Dispatching event with:', { match, eventsCount: events.length });
+            
+            // Dispatch event to open React modal
+            window.dispatchEvent(new CustomEvent('open-match-manager', {
+                detail: { 
+                    match, 
+                    events, 
+                    allPlayers,
+                    torneoEstado: window.TORNEO_DATA?.estado || 'activo',
+                    torneoTipo: window.TORNEO_DATA?.tipo || 'todos_contra_todos'
+                }
+            }));
+        } catch (e) {
+            console.error('Error in openMatchManager:', e);
+            alert('Error al abrir el gestor de eventos. Revisa la consola.');
+        }
     };
 
     (window as any).openMatchManager = window.openMatchManager;
 
+    // --- Delete Logic ---
+    declare global {
+        interface Window {
+            deleteItem: (type: string, id: string) => Promise<void>;
+            showConfirm: (title: string, message: string, onConfirm: () => void) => void;
+            showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+            openLeagueFixtureModal: () => void;
+        }
+    }
+
+    window.deleteItem = async (type: string, id: string) => {
+        if (type !== 'Tournament') return;
+
+        window.showConfirm(
+            'Eliminar Torneo',
+            '¿Estás seguro de que deseas eliminar este torneo? Se borrarán todos los partidos, jornadas y configuraciones asociadas. Esta acción NO se puede deshacer.',
+            async () => {
+                const fd = new FormData();
+                fd.append('id', id);
+
+                const result = await actions.deleteTournament(fd);
+
+                if (result?.error) {
+                    window.showToast(result.error.message, 'error');
+                } else {
+                    window.location.href = '/admin/dashboard?msg=Torneo eliminado correctamente&type=success';
+                }
+            }
+        );
+    };
+
   </script>
 
-  <script define:vars={{ matches, allEvents, allPlayers }}>
+  <ConfirmationModal />
+  <LeagueFixtureModal torneoId={id} />
+
+  <script define:vars={{ matches, allEvents, allPlayers, torneoEstado: torneo.estado, torneoTipo: torneo.tipo }}>
      window.MATCH_DATA = { matches, allEvents, allPlayers };
+     window.TORNEO_DATA = { estado: torneoEstado, tipo: torneoTipo };
   </script>
   
 </AdminSidebarLayout>
