@@ -1,6 +1,7 @@
 
 import { generateRoundRobinHandler } from '../../../actions/generate-round-robin';
 import { generateSingleEliminationHandler } from '../../../actions/generate-single-elimination';
+import { generateGroupsPlayoffHandler } from '../../../actions/generate-groups-playoff';
 
 export const POST: APIRoute = async ({ params, request, redirect }) => {
   const { id } = params;
@@ -34,7 +35,7 @@ export const POST: APIRoute = async ({ params, request, redirect }) => {
       return new Response('Torneo not found', { status: 404 });
     }
 
-    const config = (torneo.config || {}) as { double_round?: boolean; use_seeding?: boolean };
+    const config = (torneo.config || {}) as { double_round?: boolean; use_seeding?: boolean; num_grupos?: number; clasificados_por_grupo?: number };
 
     let result;
     
@@ -49,6 +50,14 @@ export const POST: APIRoute = async ({ params, request, redirect }) => {
       result = await generateSingleEliminationHandler({
         torneoId: id,
         useSeeding: config.use_seeding || false,
+      });
+    } else if (torneo.tipo === 'grupos_eliminacion') {
+      // Generar Grupos + Playoff (fase de grupos)
+      result = await generateGroupsPlayoffHandler({
+        torneoId: id,
+        numGrupos: config.num_grupos || 2,
+        clasificadosPorGrupo: config.clasificados_por_grupo || 2,
+        doubleRound: config.double_round || false,
       });
     } else {
       return new Response('Unsupported tournament type', { status: 400 });

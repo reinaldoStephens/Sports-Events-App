@@ -59,13 +59,14 @@ export const updatePlayer = defineAction({
     }
 
     // Verify player belongs to this team
-    const { data: player } = await actionSupabase
-      .from('deportistas')
-      .select('equipo_id')
-      .eq('numero_cedula', input.numero_cedula)
+    const { data: membership } = await actionSupabase
+      .from('equipo_deportistas')
+      .select('id')
+      .eq('equipo_id', input.equipo_id)
+      .eq('deportista_cedula', input.numero_cedula)
       .single();
 
-    if (!player || player.equipo_id !== input.equipo_id) {
+    if (!membership) {
       throw new ActionError({
         code: 'NOT_FOUND',
         message: 'Jugador no encontrado en este equipo',
@@ -75,11 +76,11 @@ export const updatePlayer = defineAction({
     // Verify dorsal is unique (if provided and changed)
     if (input.dorsal) {
       const { data: existingDorsal } = await actionSupabase
-        .from('deportistas')
-        .select('numero_cedula')
+        .from('equipo_deportistas')
+        .select('deportista_cedula')
         .eq('equipo_id', input.equipo_id)
         .eq('dorsal', input.dorsal)
-        .neq('numero_cedula', input.numero_cedula)
+        .neq('deportista_cedula', input.numero_cedula)
         .maybeSingle();
 
       if (existingDorsal) {
@@ -90,23 +91,34 @@ export const updatePlayer = defineAction({
       }
     }
 
-    // Update player
-    const { error } = await actionSupabase
+    // Update player personal info
+    const { error: errorProfile } = await actionSupabase
       .from('deportistas')
       .update({
         nombre: input.nombre,
         nombre_deportivo: input.nombre_deportivo || null,
-        posicion: input.posicion || null,
-        dorsal: input.dorsal || null,
       })
       .eq('numero_cedula', input.numero_cedula);
-
-    if (error) {
-      throw new ActionError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message: error.message,
-      });
+      
+    if (errorProfile) {
+        throw new ActionError({ code: 'INTERNAL_SERVER_ERROR', message: errorProfile.message });
     }
+
+    // Update team-specific info
+    const { error: errorTeam } = await actionSupabase
+        .from('equipo_deportistas')
+        .update({
+            posicion: input.posicion || null,
+            dorsal: input.dorsal || null,
+        })
+        .eq('equipo_id', input.equipo_id)
+        .eq('deportista_cedula', input.numero_cedula);
+
+    if (errorTeam) {
+        throw new ActionError({ code: 'INTERNAL_SERVER_ERROR', message: errorTeam.message });
+    }
+
+
 
     return { success: true };
   },
@@ -170,12 +182,12 @@ export const deletePlayer = defineAction({
         .eq('id', input.equipo_id);
     }
 
-    // Delete player
+    // Unlink player from team (delete form junction table)
     const { error } = await actionSupabase
-      .from('deportistas')
+      .from('equipo_deportistas')
       .delete()
-      .eq('numero_cedula', input.numero_cedula)
-      .eq('equipo_id', input.equipo_id);
+      .eq('equipo_id', input.equipo_id)
+      .eq('deportista_cedula', input.numero_cedula);
 
     if (error) {
       throw new ActionError({

@@ -14,6 +14,11 @@
     width: 100%;
   }
 
+  /* Prevent body scroll when a dialog is open */
+  body:has(dialog[open]) {
+    overflow: hidden;
+  }
+
   /* Specific tablet optimizations (768px - 1100px) */
   @media (min-width: 768px) and (max-width: 1100px) {
     .max-w-7xl {
@@ -25,6 +30,10 @@
   button, a {
     @apply transition-all duration-200;
   }
+}
+
+@layer components {
+
 }
 
 @layer utilities {

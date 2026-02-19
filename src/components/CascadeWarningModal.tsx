@@ -17,6 +17,7 @@ interface CascadeWarningModalProps {
   totalEvents: number;
   onConfirm: () => void;
   onCancel: () => void;
+  impactMessage?: string;
 }
 
 export default function CascadeWarningModal({
@@ -24,7 +25,8 @@ export default function CascadeWarningModal({
   affectedMatches,
   totalEvents,
   onConfirm,
-  onCancel
+  onCancel,
+  impactMessage
 }: CascadeWarningModalProps) {
   if (!isOpen) return null;
 
@@ -46,7 +48,11 @@ export default function CascadeWarningModal({
           <div className="space-y-4">
             <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
               <p className="text-sm font-bold text-red-900 leading-relaxed">
-                Cambiar el resultado de este partido <span className="underline">eliminará automáticamente</span> los datos de los partidos siguientes en los que participaba el equipo que está siendo reemplazado.
+                {impactMessage || (
+                  <>
+                  Cambiar el resultado de este partido <span className="underline">eliminará automáticamente</span> los datos de los partidos siguientes en los que participaba el equipo que está siendo reemplazado.
+                  </>
+                )}
               </p>
             </div>
 
@@ -104,6 +110,24 @@ export default function CascadeWarningModal({
                 ⚠️ Esta operación <span className="underline">no se puede deshacer</span>. Los marcadores y eventos de los partidos afectados serán eliminados permanentemente.
               </p>
             </div>
+            
+            {affectedMatches.length > 0 && (
+                <button
+                    onClick={() => {
+                        const text = affectedMatches.map(m => 
+                            `[${m.fase}] ${m.local} ${m.score_local ?? '-'} vs ${m.score_visitante ?? '-'} ${m.visitante}`
+                        ).join('\n');
+                        navigator.clipboard.writeText(text);
+                        alert('Resultados copiados al portapapeles');
+                    }}
+                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                    Copiar Resultados al Portapapeles
+                </button>
+            )}
           </div>
         </div>
 

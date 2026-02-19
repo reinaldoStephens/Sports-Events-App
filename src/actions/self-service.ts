@@ -18,6 +18,10 @@ export const selfServiceRegistrationActions = {
       telefono_contacto: z.string().optional(),
       direccion_cancha: z.string().min(1, "Dirección requerida"),
       logo_url: z.string().optional(),
+      director_tecnico_cedula: z.string().optional().nullable().or(z.literal('')),
+      director_tecnico_nombre: z.string().optional().nullable().or(z.literal('')),
+      asistente_tecnico_cedula: z.string().optional().nullable().or(z.literal('')),
+      asistente_tecnico_nombre: z.string().optional().nullable().or(z.literal('')),
     }),
     handler: async (input, context) => {
       if (!context.locals.user) {
@@ -35,6 +39,58 @@ export const selfServiceRegistrationActions = {
           telefono_contacto: input.telefono_contacto,
           direccion_cancha: input.direccion_cancha,
           logo_url: input.logo_url,
+          director_tecnico_cedula: input.director_tecnico_cedula || null,
+          director_tecnico_nombre: input.director_tecnico_nombre || null,
+          asistente_tecnico_cedula: input.asistente_tecnico_cedula || null,
+          asistente_tecnico_nombre: input.asistente_tecnico_nombre || null,
+          bloqueado_edicion: false,
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        throw new ActionError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message,
+        });
+      }
+
+      return { success: true, team };
+    },
+  }),
+
+  // Create team as admin (standalone, no delegado)
+  createTeamStandalone: defineAction({
+    accept: 'form',
+    input: z.object({
+      nombre: z.string().min(1, "Nombre requerido"),
+      telefono_contacto: z.string().optional().nullable().or(z.literal('')),
+      direccion_cancha: z.string().optional().nullable().or(z.literal('')),
+      logo_url: z.string().optional().nullable().or(z.literal('')),
+      director_tecnico_cedula: z.string().optional().nullable().or(z.literal('')),
+      director_tecnico_nombre: z.string().optional().nullable().or(z.literal('')),
+      asistente_tecnico_cedula: z.string().optional().nullable().or(z.literal('')),
+      asistente_tecnico_nombre: z.string().optional().nullable().or(z.literal('')),
+    }),
+    handler: async (input, context) => {
+      if (!context.locals.user) {
+        throw new ActionError({
+          code: 'UNAUTHORIZED',
+          message: 'Debe iniciar sesión',
+        });
+      }
+
+      const { data: team, error } = await (actionSupabase
+        .from('equipos') as any)
+        .insert([{
+          nombre: input.nombre,
+          telefono_contacto: input.telefono_contacto || null,
+          direccion_cancha: input.direccion_cancha || null,
+          logo_url: input.logo_url || null,
+          director_tecnico_cedula: input.director_tecnico_cedula || null,
+          director_tecnico_nombre: input.director_tecnico_nombre || null,
+          asistente_tecnico_cedula: input.asistente_tecnico_cedula || null,
+          asistente_tecnico_nombre: input.asistente_tecnico_nombre || null,
           bloqueado_edicion: false,
         }])
         .select()

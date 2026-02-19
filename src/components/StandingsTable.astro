@@ -3,9 +3,10 @@ import type { StandingRow } from '../lib/standings';
 
 interface Props {
   standings: StandingRow[];
+  highlightTop?: number;
 }
 
-const { standings } = Astro.props;
+const { standings, highlightTop = 0 } = Astro.props;
 ---
 
 <div class="overflow-x-auto rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 bg-white">
@@ -25,7 +26,7 @@ const { standings } = Astro.props;
     </thead>
     <tbody class="divide-y divide-slate-50">
       {standings.map((row, index) => (
-        <tr class="hover:bg-blue-50/30 transition-colors group">
+        <tr class={`hover:bg-blue-50/30 transition-colors group ${index < highlightTop ? '!bg-emerald-50/60' : ''}`}>
           <td class="px-6 py-4 text-left whitespace-nowrap flex items-center gap-3">
             <span class={`font-black w-6 text-right ${index < 3 ? 'text-blue-500' : 'text-slate-300'}`}>{index + 1}.</span>
             {row.equipo.logo_url || row.equipo.escudo_url ? (

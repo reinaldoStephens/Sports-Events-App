@@ -6,7 +6,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "gen-types": "npx supabase gen types typescript --project-id ipyjwlxkvuozekwvmdug > src/lib/database.types.ts"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.6",
@@ -17,6 +18,7 @@
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
     "astro": "^5.16.7",
+    "dotenv": "^17.3.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwindcss": "^4.1.18",

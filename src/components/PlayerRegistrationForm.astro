@@ -207,13 +207,57 @@ const isEditing = Boolean(editMode && playerData);
   const cedulaInput = document.getElementById('numero_cedula') as HTMLInputElement;
   
   if (cedulaInput) {
-    cedulaInput.addEventListener('input', () => {
+    cedulaInput.addEventListener('input', async () => {
       // Remove non-numeric characters
       const cleaned = cedulaInput.value.replace(/\D/g, '');
       
       // Validate length
       if (cleaned.length === 9 || (cleaned.length >= 11 && cleaned.length <= 12)) {
         cedulaInput.setCustomValidity('');
+        
+        // Auto-fill logic
+        if (!cedulaInput.readOnly) { // Only if not in edit mode
+            try {
+                // Show loading state?
+                const nombreInput = document.getElementById('nombre') as HTMLInputElement;
+                const fechaInput = document.getElementById('fecha_nacimiento') as HTMLInputElement;
+                
+                // Call action
+                const { data, error } = await actions.getPlayerByCedula({ numero_cedula: cleaned });
+                
+                if (!error && data?.success && data.player) {
+                    if (nombreInput) {
+                        nombreInput.value = data.player.nombre;
+                        // Visual cue
+                        nombreInput.classList.add('bg-blue-50');
+                        setTimeout(() => nombreInput.classList.remove('bg-blue-50'), 1000);
+                    }
+                    if (fechaInput && data.player.fecha_nacimiento) {
+                        fechaInput.value = data.player.fecha_nacimiento;
+                        // Trigger change to update age
+                        fechaInput.dispatchEvent(new Event('change'));
+                    }
+                    
+                    // Optional: Show toast or small text saying "Jugador encontrado"
+                    const successDiv = document.getElementById('success-message');
+                    if (successDiv) {
+                        const p = successDiv.querySelector('p');
+                        if (p) {
+                            const originalText = p.textContent;
+                            p.textContent = '✓ Jugador existente encontrado. Datos cargados.';
+                            successDiv.classList.remove('hidden');
+                            setTimeout(() => {
+                                successDiv.classList.add('hidden');
+                                if(originalText) p.textContent = originalText;
+                            }, 3000);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error auto-filling player', e);
+            }
+        }
+
       } else if (cleaned.length > 0) {
         cedulaInput.setCustomValidity('Cédula debe tener 9 dígitos o DIMEX 11-12 dígitos');
       }
@@ -315,9 +359,22 @@ const isEditing = Boolean(editMode && playerData);
              }
         }
 
-        // Append params
-        const separator = targetUrl.includes('?') ? '&' : '?';
-        window.location.href = `${targetUrl}${separator}msg=${encodeURIComponent(successMsg)}&type=success`;
+        // Preserve existing query parameters (like torneoId)
+        const currentParams = new URLSearchParams(window.location.search);
+        const targetUrlObj = new URL(targetUrl, window.location.origin);
+        
+        // Merge current params with target URL params
+        currentParams.forEach((value, key) => {
+          if (!targetUrlObj.searchParams.has(key)) {
+            targetUrlObj.searchParams.set(key, value);
+          }
+        });
+        
+        // Add success message params
+        targetUrlObj.searchParams.set('msg', successMsg);
+        targetUrlObj.searchParams.set('type', 'success');
+        
+        window.location.href = targetUrlObj.toString();
       }
     } catch (error: any) {
       if (errorDiv) {
