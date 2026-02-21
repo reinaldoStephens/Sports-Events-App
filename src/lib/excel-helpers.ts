@@ -9,6 +9,15 @@ export interface PlayerExcelRow {
   fecha_nacimiento?: string;
   posicion?: string;
   dorsal?: number;
+  es_dt?: boolean;
+  es_at?: boolean;
+}
+
+export interface CoachingStaff {
+  director_tecnico_cedula?: string;
+  director_tecnico_nombre?: string;
+  asistente_tecnico_cedula?: string;
+  asistente_tecnico_nombre?: string;
 }
 
 /**
@@ -29,6 +38,7 @@ export interface ExcelParseResult {
   players: PlayerExcelRow[];
   errors: Array<{ row: number; message: string }>;
   totalRows: number;
+  coachingStaff?: CoachingStaff;
 }
 
 /**
@@ -121,12 +131,31 @@ export function validatePlayerRow(
     }
   }
   
+  // Helper to check if value is truthy (not empty, not "no", not "No", not "NO")
+  const isTruthy = (val: any): boolean => {
+    if (!val) return false;
+    const str = val.toString().trim().toLowerCase();
+    return str !== '' && str !== 'no';
+  };
+
+  // Helper to get role flag value from multiple possible column names
+  const getRoleFlag = (row: any, ...keys: string[]): boolean => {
+    for (const key of keys) {
+      if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
+        return isTruthy(row[key]);
+      }
+    }
+    return false;
+  };
+
   const playerData: PlayerExcelRow = {
     cedula: row.cedula?.toString().trim(),
     nombre: row.nombre?.toString().trim(),
     fecha_nacimiento: fechaNacimiento,
     posicion: row.posicion?.toString().trim() || undefined,
     dorsal: row.dorsal ? parseInt(row.dorsal, 10) : undefined,
+    es_dt: getRoleFlag(row, 'Es DT', 'es_dt', 'ES DT', 'esDT', 'EsDT'),
+    es_at: getRoleFlag(row, 'Es AT', 'es_at', 'ES AT', 'esAT', 'EsAT'),
   };
   
   return {
@@ -152,6 +181,7 @@ export function parseExcelToPlayers(buffer: ArrayBuffer): ExcelParseResult {
     const players: PlayerExcelRow[] = [];
     const errors: Array<{ row: number; message: string }> = [];
     const seenCedulas = new Set<string>();
+    const coachingStaff: CoachingStaff = {};
     
     rawData.forEach((row: any, index) => {
       const rowNumber = index + 2; // +2 because Excel rows are 1-indexed and we have a header
@@ -172,7 +202,21 @@ export function parseExcelToPlayers(buffer: ArrayBuffer): ExcelParseResult {
           });
         } else {
           seenCedulas.add(validation.data.cedula);
-          players.push(validation.data);
+          
+          // Extract coaching staff (first occurrence only)
+          if (validation.data.es_dt && !coachingStaff.director_tecnico_cedula) {
+            coachingStaff.director_tecnico_cedula = validation.data.cedula;
+            coachingStaff.director_tecnico_nombre = validation.data.nombre;
+          }
+          if (validation.data.es_at && !coachingStaff.asistente_tecnico_cedula) {
+            coachingStaff.asistente_tecnico_cedula = validation.data.cedula;
+            coachingStaff.asistente_tecnico_nombre = validation.data.nombre;
+          }
+          
+          // Only add to players list if NOT coaching staff
+          if (!validation.data.es_dt && !validation.data.es_at) {
+            players.push(validation.data);
+          }
         }
       }
     });
@@ -182,6 +226,7 @@ export function parseExcelToPlayers(buffer: ArrayBuffer): ExcelParseResult {
       players,
       errors,
       totalRows: rawData.length,
+      coachingStaff: Object.keys(coachingStaff).length > 0 ? coachingStaff : undefined,
     };
   } catch (error) {
     return {
@@ -199,11 +244,31 @@ export function parseExcelToPlayers(buffer: ArrayBuffer): ExcelParseResult {
 export function generatePlayerTemplate(): ArrayBuffer {
   const sampleData = [
     {
+      cedula: '555666777',
+      nombre: 'Carlos Rodríguez',
+      fecha_nacimiento: '',
+      posicion: '',
+      dorsal: '',
+      'Es DT': 'X',
+      'Es AT': '',
+    },
+    {
+      cedula: '666777888',
+      nombre: 'Ana Martínez',
+      fecha_nacimiento: '',
+      posicion: '',
+      dorsal: '',
+      'Es DT': '',
+      'Es AT': 'X',
+    },
+    {
       cedula: '123456789',
       nombre: 'Juan Pérez García',
       fecha_nacimiento: '15/03/1995',
       posicion: 'Delantero',
       dorsal: 10,
+      'Es DT': '',
+      'Es AT': '',
     },
     {
       cedula: '987654321',
@@ -211,13 +276,8 @@ export function generatePlayerTemplate(): ArrayBuffer {
       fecha_nacimiento: '20/07/1998',
       posicion: 'Mediocampista',
       dorsal: 8,
-    },
-    {
-      cedula: '456789123',
-      nombre: 'Carlos Rodríguez Sánchez',
-      fecha_nacimiento: '',
-      posicion: 'Defensa',
-      dorsal: 5,
+      'Es DT': '',
+      'Es AT': '',
     },
   ];
   

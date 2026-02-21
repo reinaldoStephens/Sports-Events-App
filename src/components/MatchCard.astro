@@ -10,6 +10,9 @@ interface Props {
     estado_partido: 'pendiente' | 'en_curso' | 'finalizado';
     local?: { nombre: string; logo_url: string | null };
     visitante?: { nombre: string; logo_url: string | null };
+    penales_jugados?: boolean | null;
+    penales_local?: number | null;
+    penales_visitante?: number | null;
   };
 }
 
@@ -46,12 +49,25 @@ const formatDate = (dateString: string | null) => {
         </div>
 
         <!-- Score / VS -->
-        <div class="flex flex-col items-center justify-center w-20">
+        <div class="flex flex-col items-center justify-center w-24">
             {isFinished || isLive ? (
-                <div class="flex items-center gap-2">
-                    <span class={`text-4xl font-black ${match.puntos_local! > match.puntos_visitante! ? 'text-slate-900' : 'text-slate-300'}`}>{match.puntos_local}</span>
-                    <span class="text-slate-300 font-light">-</span>
-                    <span class={`text-4xl font-black ${match.puntos_visitante! > match.puntos_local! ? 'text-slate-900' : 'text-slate-300'}`}>{match.puntos_visitante}</span>
+                <div class="flex flex-col items-center">
+                    <div class="flex items-center gap-2">
+                        <span class={`text-4xl font-black ${match.puntos_local! > match.puntos_visitante! ? 'text-slate-900' : 'text-slate-300'}`}>{match.puntos_local}</span>
+                        <span class="text-slate-300 font-light">-</span>
+                        <span class={`text-4xl font-black ${match.puntos_visitante! > match.puntos_local! ? 'text-slate-900' : 'text-slate-300'}`}>{match.puntos_visitante}</span>
+                    </div>
+                    
+                    {match.penales_jugados && (
+                        <div class="mt-1 flex flex-col items-center">
+                            <span class="text-[10px] font-black text-green-600 uppercase tracking-widest bg-green-50 px-2 py-0.5 rounded-full border border-green-100">
+                                Penales
+                            </span>
+                            <span class="text-xs font-bold text-green-700 mt-0.5">
+                                ({match.penales_local} - {match.penales_visitante})
+                            </span>
+                        </div>
+                    )}
                 </div>
             ) : (
                  <span class="text-2xl font-black text-slate-200 uppercase">VS</span>

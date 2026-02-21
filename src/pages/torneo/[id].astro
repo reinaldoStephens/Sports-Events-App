@@ -2,6 +2,7 @@
 import PublicLayout from '../../layouts/PublicLayout.astro';
 import MatchCard from '../../components/MatchCard.astro';
 import StandingsTable from '../../components/StandingsTable.astro';
+import PlayoffBracket from '../../components/PlayoffBracket.astro';
 import NewsFeed from '../../components/NewsFeed.astro';
 import { supabase } from '../../lib/supabase';
 import { calculateStandings } from '../../lib/standings';
@@ -23,6 +24,7 @@ interface Torneo {
   logo_url: string | null;
   fecha_inicio: string;
   estado: string;
+  tipo: 'liga' | 'eliminacion_simple' | 'grupos_eliminacion';
 }
 
 interface Equipo {
@@ -30,6 +32,7 @@ interface Equipo {
   nombre: string;
   logo_url: string | null;
   escudo_url?: string | null;
+  grupo?: string;
 }
 
 interface Jornada {
@@ -52,6 +55,9 @@ interface Partido {
   local?: Equipo;
   visitante?: Equipo;
   jornada?: Jornada;
+  penales_jugados?: boolean | null;
+  penales_local?: number | null;
+  penales_visitante?: number | null;
 }
 
 interface Noticia {
@@ -94,10 +100,10 @@ const matches = (matchesRaw || []) as Partido[];
 // 3. Equipos
 const { data: participantes } = await supabase
     .from('torneo_participantes')
-    .select('equipo:equipos(*)')
+    .select('grupo, equipo:equipos(*)')
     .eq('torneo_id', id);
 
-const teams = (participantes?.map((p: any) => p.equipo).filter(Boolean) || []) as Equipo[];
+const teams = (participantes?.map((p: any) => ({ ...p.equipo, grupo: p.grupo })).filter(Boolean) || []) as Equipo[];
 
 // 3.5. Jornadas
 const { data: jornadasRaw } = await supabase
@@ -119,6 +125,17 @@ const news = (noticias || []) as Noticia[];
 
 // Calculate Standings
 const standings = calculateStandings(teams, matches);
+const groupStandings: Record<string, any[]> = {};
+
+if (torneo.tipo === 'grupos_eliminacion') {
+    const groups = [...new Set(teams.map(t => t.grupo).filter(Boolean))].sort();
+    groups.forEach(groupName => {
+        if (!groupName) return;
+        const groupTeams = teams.filter(t => t.grupo === groupName);
+        const groupMatches = matches.filter(m => m.jornada?.nombre_fase?.includes(`Grupo ${groupName}`));
+        groupStandings[groupName] = calculateStandings(groupTeams, groupMatches);
+    });
+}
 
 // Derived Data for Resumen
 const lastMatches = matches.filter(m => m.estado_partido === 'finalizado').slice(-4).reverse();
@@ -133,6 +150,18 @@ const matchesByJornada = matches.reduce((acc, match) => {
     acc[jName].push(match);
     return acc;
 }, {} as Record<string, Partido[]>);
+
+const tabs = [
+    { id: 'resumen', label: 'Resumen' },
+    { id: 'calendario', label: 'Resultados y Calendario' },
+    { id: 'posiciones', label: 'Tabla de Posiciones' },
+    { id: 'noticias', label: 'Noticias' },
+];
+
+if (torneo.tipo === 'grupos_eliminacion' || torneo.tipo === 'eliminacion_simple') {
+    // Insert after Posiciones
+    tabs.splice(3, 0, { id: 'fase-final', label: 'Fase Final' });
+}
 
 ---
 
@@ -170,12 +199,7 @@ const matchesByJornada = matches.reduce((acc, match) => {
     <div class="sticky top-20 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 overflow-x-auto pb-0">
             <nav class="flex space-x-8 min-w-max">
-                {[
-                    { id: 'resumen', label: 'Resumen' },
-                    { id: 'calendario', label: 'Resultados y Calendario' },
-                    { id: 'posiciones', label: 'Tabla de Posiciones' },
-                    { id: 'noticias', label: 'Noticias' },
-                ].map((t) => (
+                {tabs.map((t) => (
                     <a 
                         href={`?tab=${t.id}`}
                         class={`py-4 px-2 text-sm font-black uppercase tracking-widest border-b-[3px] transition-all ${tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-300'}`}
@@ -341,8 +365,26 @@ const matchesByJornada = matches.reduce((acc, match) => {
 
         {/* POSICIONES TAB */}
         {tab === 'posiciones' && (
-             <div class="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto">
-                <StandingsTable standings={standings} />
+             <div class="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto space-y-12">
+                {torneo.tipo === 'grupos_eliminacion' && Object.keys(groupStandings).length > 0 ? (
+                    Object.entries(groupStandings).map(([groupName, groupRows]) => (
+                        <div>
+                            <div class="bg-white rounded-t-xl px-6 py-4 border-b border-slate-100 flex items-center justify-between mb-4 shadow-sm">
+                                <h3 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Grupo {groupName}</h3>
+                                <span class="bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded">Fase de Grupos</span>
+                            </div>
+                            <StandingsTable standings={groupRows} />
+                        </div>
+                    ))
+                ) : (
+                    <StandingsTable standings={standings} />
+                )}
+             </div>
+        )}
+
+        {tab === 'fase-final' && (
+             <div class="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto">
+                <PlayoffBracket matches={matches} />
              </div>
         )}
 

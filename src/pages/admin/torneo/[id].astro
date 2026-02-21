@@ -3,13 +3,24 @@ import AdminSidebarLayout from '../../../layouts/AdminSidebarLayout.astro';
 import SmartImage from '../../../components/SmartImage.astro';
 import StandingsTable from '../../../components/StandingsTable.astro';
 import MatchEventsManager from '../../../components/MatchEventsManager.tsx';
+import DeleteCascadeManager from '../../../components/DeleteCascadeManager.tsx';
 import ConfirmationModal from '../../../components/ConfirmationModal.astro';
 import LeagueFixtureModal from '../../../components/LeagueFixtureModal.astro';
+import GroupsFixtureModal from '../../../components/GroupsFixtureModal.astro';
 import { supabase } from '../../../lib/supabase';
-import { calculateStandings } from '../../../lib/standings';
+import { calculateStandings, type StandingRow } from '../../../lib/standings';
 
 const { id } = Astro.params;
 const tab = Astro.url.searchParams.get('tab') || 'dashboard';
+
+// Create Admin Client for RLS Bypass
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from '../../../lib/database.types';
+
+const supabaseAdmin = createClient<Database>(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 if (!id) return Astro.redirect('/admin/dashboard');
 
@@ -21,11 +32,21 @@ interface Torneo {
   imagen_portada: string | null;
   logo_url: string | null;
   fecha_inicio: string;
+  fecha_fin?: string | null;
   estado: string;
   tipo: 'liga' | 'eliminacion_simple' | 'grupos_eliminacion';
   config: {
     double_round?: boolean;
     use_seeding?: boolean;
+    num_grupos?: number;
+    clasificados_por_grupo?: number;
+    playoff_config?: {
+      usa_ida_vuelta?: boolean;
+      fases_ida_vuelta?: string[];
+      final_ida_vuelta?: boolean;
+      usa_gol_visitante?: boolean;
+      penales_si_empate_agregado?: boolean;
+    };
   } | null;
 }
 
@@ -57,6 +78,15 @@ interface Partido {
   local?: Equipo;
   visitante?: Equipo;
   jornada?: Jornada;
+  goles_local_tiempo_extra?: number | null;
+  goles_visitante_tiempo_extra?: number | null;
+  penales_jugados?: boolean;
+  penales_local?: number | null;
+  penales_visitante?: number | null;
+  es_partido_vuelta?: boolean;
+  marcador_agregado_local?: number | null;
+  marcador_agregado_visitante?: number | null;
+  ganador_agregado_id?: string | null;
 }
 
 interface Noticia {
@@ -68,7 +98,7 @@ interface Noticia {
 }
 
 // 1. Fetch Tournament
-const { data: torneoRaw, error: tError } = await supabase
+const { data: torneoRaw, error: tError } = await supabaseAdmin
   .from('torneos')
   .select('*')
   .eq('id', id)
@@ -79,7 +109,7 @@ if (tError || !torneoRaw) return Astro.redirect('/admin/dashboard');
 const torneo = torneoRaw as Torneo;
 
 // 2. Fetch Helper Data (Jornadas, Teams)
-const { data: jornadasRaw } = await supabase
+const { data: jornadasRaw } = await supabaseAdmin
   .from('jornadas')
   .select('*')
   .eq('torneo_id', id)
@@ -87,10 +117,12 @@ const { data: jornadasRaw } = await supabase
 
 const jornadas = (jornadasRaw || []) as Jornada[];
 
-const { data: participantesRaw } = await supabase
+const { data: participantesRaw } = await supabaseAdmin
   .from('torneo_participantes')
   .select(`
-    equipo:equipos (
+    equipo_id,
+    grupo,
+    equipo:equipos!torneo_participantes_equipo_id_fkey (
       id,
       nombre,
       logo_url,
@@ -101,8 +133,8 @@ const { data: participantesRaw } = await supabase
 
 const equipos = (participantesRaw?.map((p: any) => p.equipo).filter(Boolean) || []).sort((a: any, b: any) => a.nombre.localeCompare(b.nombre)) as Equipo[];
 
-// Fetch ALL teams for the registration dropdown
-const { data: allTeamsRaw } = await supabase
+// Moved group logic down
+const { data: allTeamsRaw } = await supabaseAdmin
   .from('equipos')
   .select('id, nombre, logo_url')
   .order('nombre');
@@ -113,33 +145,89 @@ const allTeams = (allTeamsRaw || []) as Equipo[];
 const jornadaIds = jornadas.map(j => j.id);
 let matches: Partido[] = [];
 
+console.log('🔍 [AdminDebug] Jornadas found:', jornadas.length);
+if (jornadas.length > 0) {
+    console.log('🔍 [AdminDebug] Jornada IDs:', jornadaIds);
+}
+
 if (jornadaIds.length > 0) {
-    const { data: m } = await supabase
+    const { data: m, error: mError } = await supabaseAdmin
         .from('partidos')
         .select(`
             *,
-            local:equipo_local_id(id, nombre, logo_url),
-            visitante:equipo_visitante_id(id, nombre, logo_url),
-            jornada:jornada_id(id, numero_jornada, nombre_fase)
+            local:equipos!partidos_equipo_local_id_fkey(id, nombre, logo_url),
+            visitante:equipos!partidos_equipo_visitante_id_fkey(id, nombre, logo_url)
         `)
         .in('jornada_id', jornadaIds)
         .order('fecha_partido', { ascending: false });
+    
+    if (mError) {
+        console.error('🔴 [AdminDebug] Error fetching matches:', mError);
+    } else {
+        console.log('🔍 [AdminDebug] Matches found:', m?.length);
+        if (m && m.length > 0) {
+           console.log('🔍 [AdminDebug] First match sample:', JSON.stringify(m[0], null, 2));
+           console.log('🔍 [AdminDebug] Aggregate fields present?', 'marcador_agregado_local' in m[0]);
+           const returnMatches = m.filter((x: any) => x.es_partido_vuelta);
+           console.log('🔍 [AdminDebug] Return matches count:', returnMatches.length);
+           if (returnMatches.length > 0) {
+               console.log('🔍 [AdminDebug] First return match:', JSON.stringify(returnMatches[0], null, 2));
+           }
+        }
+    }
     matches = (m || []) as Partido[];
+} else {
+    console.log('⚠️ [AdminDebug] No jornadas found, skipping match fetch');
 }
+
+// Group assignments for grupos_eliminacion tournaments
+const groupAssignments = new Map<string, string[]>();
+const teamGroupMap = new Map<string, string>(); // Reverse map for O(1) lookup
+
+if (torneo.tipo === 'grupos_eliminacion' && participantesRaw) {
+  participantesRaw.forEach((p: any) => {
+    if (p.grupo) {
+      if (!groupAssignments.has(p.grupo)) groupAssignments.set(p.grupo, []);
+      groupAssignments.get(p.grupo)!.push(p.equipo_id);
+      teamGroupMap.set(p.equipo_id, p.grupo);
+    }
+  });
+}
+const sortedGroupNames = Array.from(groupAssignments.keys()).sort();
+
+// Calculate per-group standings
+const groupStandings = new Map<string, StandingRow[]>();
+if (torneo.tipo === 'grupos_eliminacion' && sortedGroupNames.length > 0) {
+  const groupPhaseMatches = matches.filter((m: Partido) => !(m as any).ronda);
+  for (const groupName of sortedGroupNames) {
+    const groupTeamIds = groupAssignments.get(groupName) || [];
+    const groupEquipos = equipos.filter(e => groupTeamIds.includes(e.id));
+    const groupMatches = groupPhaseMatches.filter((m: Partido) =>
+      m.equipo_local_id && m.equipo_visitante_id &&
+      groupTeamIds.includes(m.equipo_local_id) &&
+      groupTeamIds.includes(m.equipo_visitante_id)
+    );
+    groupStandings.set(groupName, calculateStandings(groupEquipos, groupMatches));
+  }
+}
+
+// Check if all group phase matches are finalized (for playoff generation)
+const allGroupMatchesFinalized = torneo.tipo === 'grupos_eliminacion' && matches.length > 0 &&
+  matches.filter((m: Partido) => !(m as any).ronda).every((m: Partido) => m.estado_partido === 'finalizado');
+const hasPlayoffMatches = matches.some((m: any) => m.ronda);
 
 // 4. Fetch Match Events
 const matchIds = matches.map(m => m.id);
 let allEvents: any[] = [];
 
 if (matchIds.length > 0) {
-    const { data: eventsRaw } = await supabase
+    // Use Admin Client
+    const { data: eventsRaw } = await supabaseAdmin
         .from('eventos_partido')
-        .select(`
-            *,
-            jugador:jugador_cedula(numero_cedula, nombre, dorsal)
-        `)
+        .select('*')
         .in('partido_id', matchIds)
         .order('minuto', { ascending: true });
+    
     allEvents = eventsRaw || [];
 }
 
@@ -148,11 +236,25 @@ const equipoIds = equipos.map(e => e.id);
 let allPlayers: any[] = [];
 
 if (equipoIds.length > 0) {
-    const { data: playersRaw } = await supabase
-        .from('deportistas')
-        .select('numero_cedula, nombre, dorsal, equipo_id')
+    // Use Admin Client
+    const { data: playersRaw } = await supabaseAdmin
+        .from('equipo_deportistas')
+        .select(`
+            equipo_id,
+            dorsal,
+            deportista:deportista_cedula (
+                numero_cedula,
+                nombre
+            )
+        `)
         .in('equipo_id', equipoIds);
-    allPlayers = playersRaw || [];
+    
+    allPlayers = (playersRaw || []).map((p: any) => ({
+        numero_cedula: p.deportista.numero_cedula,
+        nombre: p.deportista.nombre,
+        dorsal: p.dorsal,
+        equipo_id: p.equipo_id
+    }));
 }
 
 // 6. Fetch News
@@ -228,30 +330,72 @@ const standings = calculateStandings(equipos, matches);
 
     <!-- DASHBOARD TAB -->
     {tab === 'dashboard' && (
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <!-- Posiciones Preview -->
-            <div class="space-y-4">
-                <h3 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Tabla General</h3>
-                <StandingsTable standings={standings} />
-            </div>
+        <div class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
 
-            <!-- Recent Matches -->
-            <div class="space-y-4">
-                <h3 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Últimos Resultados</h3>
-                <div class="space-y-3">
-                    {matches.slice(0, 5).map((match: Partido) => (
-                        <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
-                            <div class="flex items-center gap-4 text-xs font-bold text-slate-600">
-                                <span class="bg-slate-100 px-2 py-1 rounded text-[9px] uppercase tracking-widest">{match.jornada?.nombre_fase || 'Jornada ' + match.jornada?.numero_jornada}</span>
-                                <span>{match.local?.nombre}</span>
-                                <span class="font-black text-slate-900">{match.puntos_local ?? '-'}</span>
-                                <span class="text-slate-300">vs</span>
-                                <span class="font-black text-slate-900">{match.puntos_visitante ?? '-'}</span>
-                                <span>{match.visitante?.nombre}</span>
+            {/* Groups Standings (for grupos_eliminacion) */}
+            {torneo.tipo === 'grupos_eliminacion' && sortedGroupNames.length > 0 && (
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Fase de Grupos</h3>
+                        {allGroupMatchesFinalized && !hasPlayoffMatches && (
+                            <button
+                                id="generate-playoff-btn"
+                                data-id={id}
+                                class="px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-orange-500/30 hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2"
+                            >
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                Generar Playoff
+                            </button>
+                        )}
+                        {hasPlayoffMatches && (
+                            <span class="px-4 py-2 bg-green-50 text-green-600 border border-green-200 rounded-xl text-[10px] font-black uppercase tracking-widest">✅ Playoff Generado</span>
+                        )}
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {sortedGroupNames.map(groupName => {
+                            const gStandings = groupStandings.get(groupName) || [];
+                            const clasificados = torneo.config?.clasificados_por_grupo || 2;
+                            return (
+                                <div class="space-y-3">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-8 h-8 bg-emerald-600 text-white rounded-lg flex items-center justify-center font-black text-sm">{groupName}</span>
+                                        <span class="text-sm font-black text-slate-700 uppercase tracking-wider">Grupo {groupName}</span>
+                                    </div>
+                                    <StandingsTable standings={gStandings} highlightTop={clasificados} />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* General standings (for liga or as fallback) */}
+                {(torneo.tipo !== 'grupos_eliminacion' || sortedGroupNames.length === 0) && (
+                    <div class="space-y-4">
+                        <h3 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Tabla General</h3>
+                        <StandingsTable standings={standings} />
+                    </div>
+                )}
+
+                <!-- Matches Section -->
+                <div class="space-y-6">
+                    <h3 class="text-xl font-black text-slate-900 uppercase tracking-tighter">Últimos Resultados</h3>
+                    <div class="space-y-3">
+                        {matches.slice(0, 5).map((match: Partido) => (
+                            <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
+                                <div class="flex items-center gap-4 text-xs font-bold text-slate-600">
+                                    <span class="bg-slate-100 px-2 py-1 rounded text-[9px] uppercase tracking-widest">{match.jornada?.nombre_fase || 'Jornada ' + match.jornada?.numero_jornada}</span>
+                                    <span>{match.local?.nombre}</span>
+                                    <span class="font-black text-slate-900">{match.puntos_local ?? '-'}</span>
+                                    <span class="text-slate-300">vs</span>
+                                    <span class="font-black text-slate-900">{match.puntos_visitante ?? '-'}</span>
+                                    <span>{match.visitante?.nombre}</span>
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                     {matches.length === 0 && <p class="text-slate-400 text-sm">No hay partidos registrados.</p>}
+                        ))}
+                         {matches.length === 0 && <p class="text-slate-400 text-sm">No hay partidos registrados.</p>}
+                    </div>
                 </div>
             </div>
         </div>
@@ -284,6 +428,18 @@ const standings = calculateStandings(equipos, matches);
                             🗑️ Eliminar Todas
                         </button>
                     )}
+
+                    {torneo.tipo === 'grupos_eliminacion' && jornadas.length > 0 && (
+                        <button 
+                            id="generate-playoff-btn"
+                            data-id={id}
+                            data-nombre={torneo.nombre}
+                            class="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-orange-500/30 hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2"
+                        >
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                            Generar Playoff
+                        </button>
+                    )}
                     <button onclick="document.getElementById('new-jornada-modal').showModal()" class="px-4 py-2 bg-white border border-slate-200 hover:border-blue-500 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
                         + Nueva Jornada
                     </button>
@@ -293,8 +449,28 @@ const standings = calculateStandings(equipos, matches);
                 </div>
              </div>
 
-             {jornadas && jornadas.length > 0 ? (
+            {jornadas && jornadas.length > 0 ? (
                 <div class="space-y-6">
+                    {/* Group Filter Tabs (Only for group tournaments) */}
+                    {sortedGroupNames.length > 0 && (
+                         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-2 flex flex-wrap gap-2">
+                            <button 
+                                class="group-filter-btn px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all bg-slate-900 text-white shadow-lg"
+                                data-group="all"
+                            >
+                                Todos
+                            </button>
+                            {sortedGroupNames.map(group => (
+                                <button 
+                                    class="group-filter-btn px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all bg-slate-50 text-slate-400 hover:bg-slate-100"
+                                    data-group={group}
+                                >
+                                    Grupo {group}
+                                </button>
+                            ))}
+                         </div>
+                    )}
+
                     <!-- Horizontal Scroll Navigation -->
                     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-2 sticky top-4 z-20">
                          <div class="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide" id="jornadas-nav">
@@ -330,19 +506,27 @@ const standings = calculateStandings(equipos, matches);
                                         >
                                             ✏️ Editar
                                         </button>
-                                        <button 
-                                            onclick={`deleteItem('Jornada', '${jornada.id}')`}
-                                            class="px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors"
-                                            title="Eliminar jornada"
-                                        >
-                                            🗑️
-                                        </button>
+                                            <button 
+                                                class="delete-btn-trigger px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors"
+                                                title="Eliminar jornada"
+                                                data-delete-type="Jornada"
+                                                data-delete-id={jornada.id}
+                                            >
+                                                🗑️
+                                            </button>
                                     </div>
                                 </div>
                                 <div class="divide-y divide-slate-50">
                                     {matches.filter((m: Partido) => m.jornada_id === jornada.id).length > 0 ? 
-                                        matches.filter((m: Partido) => m.jornada_id === jornada.id).map((match: Partido) => (
-                                            <div class="p-4 flex items-center justify-between hover:bg-blue-50/20 transition-colors group">
+                                        matches.filter((m: Partido) => m.jornada_id === jornada.id).map((match: Partido) => {
+                                            const localGroup = teamGroupMap.get(match.equipo_local_id || '') || '';
+                                            const visitorGroup = teamGroupMap.get(match.equipo_visitante_id || '') || '';
+                                            return (
+                                            <div 
+                                                class="match-card p-4 flex items-center justify-between hover:bg-blue-50/20 transition-colors group"
+                                                data-group-local={localGroup}
+                                                data-group-visitor={visitorGroup}
+                                            >
                                                 <div class="flex items-center gap-4 w-full md:w-2/3">
                                                     <div class="text-center w-14 flex-shrink-0 flex flex-col items-center gap-1">
                                                         {match.fecha_partido ? (
@@ -369,9 +553,16 @@ const standings = calculateStandings(equipos, matches);
                                                                 <div class="w-6 h-6 rounded bg-slate-50 flex items-center justify-center p-0.5">
                                                                      {match.local?.logo_url ? <img src={match.local.logo_url} class="w-full h-full object-contain" /> : <span class="text-[10px] font-black text-slate-300">{match.local?.nombre[0]}</span>}
                                                                 </div>
-                                                                <span class={`font-bold text-sm ${match.puntos_local > match.puntos_visitante ? 'text-slate-900' : 'text-slate-600'}`}>{match.local?.nombre}</span>
+                                                                <span class={`font-bold text-sm ${(match.puntos_local ?? -1) > (match.puntos_visitante ?? -1) ? 'text-slate-900' : 'text-slate-600'}`}>{match.local?.nombre}</span>
                                                             </div>
-                                                            <span class="font-black text-slate-900 text-lg">{match.puntos_local ?? '-'}</span>
+                                                            <div class="flex flex-col items-end">
+                                                                <span class="font-black text-slate-900 text-lg">{match.puntos_local ?? '-'}</span>
+                                                                {match.penales_jugados && match.penales_local !== null && (
+                                                                    <span class="text-[9px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 mt-1">
+                                                                        ({match.penales_local})
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                         <!-- Visitante -->
                                                         <div class="flex items-center justify-between">
@@ -379,9 +570,16 @@ const standings = calculateStandings(equipos, matches);
                                                                  <div class="w-6 h-6 rounded bg-slate-50 flex items-center justify-center p-0.5">
                                                                      {match.visitante?.logo_url ? <img src={match.visitante.logo_url} class="w-full h-full object-contain" /> : <span class="text-[10px] font-black text-slate-300">{match.visitante?.nombre[0]}</span>}
                                                                 </div>
-                                                                <span class={`font-bold text-sm ${match.puntos_visitante > match.puntos_local ? 'text-slate-900' : 'text-slate-600'}`}>{match.visitante?.nombre}</span>
+                                                                <span class={`font-bold text-sm ${(match.puntos_visitante ?? -1) > (match.puntos_local ?? -1) ? 'text-slate-900' : 'text-slate-600'}`}>{match.visitante?.nombre}</span>
                                                             </div>
-                                                            <span class="font-black text-slate-900 text-lg">{match.puntos_visitante ?? '-'}</span>
+                                                            <div class="flex flex-col items-end">
+                                                                <span class="font-black text-slate-900 text-lg">{match.puntos_visitante ?? '-'}</span>
+                                                                {match.penales_jugados && match.penales_visitante !== null && (
+                                                                    <span class="text-[9px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 mt-1">
+                                                                        ({match.penales_visitante})
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -399,14 +597,30 @@ const standings = calculateStandings(equipos, matches);
                                                             <button onclick={`openMatchManager('${match.id}')`} class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-200 w-full text-center">
                                                                 📊 Goles y Eventos
                                                             </button>
-                                                            <button onclick={`deleteItem('Match', '${match.id}')`} class="px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors w-full text-center">
+                                                            <button 
+                                                                class="delete-btn-trigger px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors w-full text-center"
+                                                                data-delete-type="Match"
+                                                                data-delete-id={match.id}
+                                                            >
                                                                 Eliminar
                                                             </button>
                                                         </>
                                                     )}
                                                 </div>
+                                                
+                                                {match.es_partido_vuelta && match.marcador_agregado_local !== null && match.marcador_agregado_visitante !== null && (
+                                                    <div class="mt-3 pt-2 border-t border-slate-100 flex justify-center">
+                                                        <span class="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-200">
+                                                            Global: {match.marcador_agregado_local} - {match.marcador_agregado_visitante}
+                                                            {match.ganador_agregado_id === null && match.estado_partido === 'finalizado' && (
+                                                                <span class="text-amber-600 ml-1">(Empate)</span>
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
-                                        )) : (
+                                        );
+                                        }) : (
                                         <div class="py-12 flex flex-col items-center justify-center text-center">
                                             <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
                                                 <svg class="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -497,9 +711,10 @@ const standings = calculateStandings(equipos, matches);
                                             </button>
                                         ) : (
                                             <button 
-                                                onclick={`deleteItem('TeamParticipation', '${equipo.id}')`}
-                                                class="p-2 bg-white border border-slate-200 text-slate-400 rounded-lg hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
+                                                class="delete-btn-trigger p-2 bg-white border border-slate-200 text-slate-400 rounded-lg hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
                                                 title="Desinscribir del torneo"
+                                                data-delete-type="TeamParticipation"
+                                                data-delete-id={equipo.id}
                                             >
                                                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                             </button>
@@ -550,7 +765,11 @@ const standings = calculateStandings(equipos, matches);
                                 <span class="bg-blue-50 text-blue-600 px-2 py-1 rounded-lg text-[10px] uppercase font-black tracking-widest mb-2 inline-block">
                                     {new Date(noticia.created_at).toLocaleDateString()}
                                 </span>
-                                <button onclick={`deleteItem('News', '${noticia.id}')`} class="text-slate-300 hover:text-red-500 transition-colors p-1">
+                                <button 
+                                    class="delete-btn-trigger text-slate-300 hover:text-red-500 transition-colors p-1"
+                                    data-delete-type="News"
+                                    data-delete-id={noticia.id}
+                                >
                                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 </button>
                              </div>
@@ -579,10 +798,12 @@ const standings = calculateStandings(equipos, matches);
     <!-- MODALS -->
 
     <!-- 1. Edit Tournament -->
-    <dialog id="edit-tournament-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-10 shadow-2xl w-full max-w-lg relative animate-in fade-in zoom-in duration-200 backdrop:bg-slate-900/60 focus:outline-none" role="dialog" aria-modal="true" aria-labelledby="modal-title-edit" tabindex="-1">
+    <dialog id="edit-tournament-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-10 shadow-2xl w-full max-w-lg relative animate-in fade-in zoom-in duration-200 backdrop:bg-slate-900/60 focus:outline-none overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title-edit" tabindex="-1">
         <button class="modal-close-btn absolute top-8 right-8 z-10 cursor-pointer text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-200 rounded-full p-1" aria-label="Cerrar"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
         <h3 id="modal-title-edit" class="text-2xl font-black uppercase tracking-tighter mb-8 text-slate-900">Configurar Torneo</h3>
-        <form id="edit-tournament-form" class="space-y-4">
+        
+        <div class="h-full max-h-[70vh] overflow-y-auto pr-2 pb-6 custom-scrollbar">
+            <form id="edit-tournament-form" class="space-y-4">
             <input type="hidden" name="id" value={id} />
             <div class="space-y-1">
                 <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Nombre</label>
@@ -624,8 +845,96 @@ const standings = calculateStandings(equipos, matches);
                     </select>
                 </div>
             </div>
+
+            <!-- Playoff Configuration (Only for Grupos + Playoff) -->
+            {torneo.tipo === 'grupos_eliminacion' && (
+                <div id="edit-playoff-config-section" class="border-t-2 border-slate-100 pt-6 space-y-4">
+                    <h4 class="text-sm font-black text-slate-900 uppercase tracking-widest">Configuración de Playoffs</h4>
+                    
+                    <div class="flex items-center gap-3 bg-slate-50 p-4 rounded-xl">
+                        <input 
+                            type="checkbox" 
+                            name="usa_ida_vuelta" 
+                            id="edit-usa-ida-vuelta-checkbox"
+                            class="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                            checked={torneo.config?.playoff_config?.usa_ida_vuelta}
+                        />
+                        <label for="edit-usa-ida-vuelta-checkbox" class="text-xs font-bold text-slate-700 uppercase tracking-wide cursor-pointer select-none">
+                            Habilitar Partidos Ida y Vuelta
+                        </label>
+                    </div>
+
+                    <div id="edit-phases-selection" class={`space-y-3 pl-2 ${torneo.config?.playoff_config?.usa_ida_vuelta ? '' : 'hidden'}`}>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Seleccionar Fases con Ida y Vuelta</p>
+                        
+                        <div class="grid grid-cols-1 gap-2">
+                            <label class="flex items-center gap-3 bg-white border border-slate-100 p-3 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    name="fase_cuartos" 
+                                    value="quarterfinals" 
+                                    class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                    checked={torneo.config?.playoff_config?.fases_ida_vuelta?.includes('quarterfinals')}
+                                />
+                                <span class="text-xs font-bold text-slate-600 uppercase">Cuartos de Final</span>
+                            </label>
+
+                            <label class="flex items-center gap-3 bg-white border border-slate-100 p-3 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    name="fase_semis" 
+                                    value="semifinals" 
+                                    class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                    checked={torneo.config?.playoff_config?.fases_ida_vuelta?.includes('semifinals')}
+                                />
+                                <span class="text-xs font-bold text-slate-600 uppercase">Semifinales</span>
+                            </label>
+
+                            <label class="flex items-center gap-3 bg-white border border-slate-100 p-3 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    name="fase_final" 
+                                    value="final" 
+                                    class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                    checked={torneo.config?.playoff_config?.final_ida_vuelta}
+                                />
+                                <span class="text-xs font-bold text-slate-600 uppercase">Final (Ida y Vuelta)</span>
+                            </label>
+                        </div>
+
+                         <div class="space-y-2 mt-4 pt-4 border-t border-slate-100">
+                             <div class="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    name="usa_gol_visitante" 
+                                    id="edit-gol-visitante"
+                                    class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                    checked={torneo.config?.playoff_config?.usa_gol_visitante}
+                                />
+                                <label for="edit-gol-visitante" class="text-[10px] font-bold text-slate-600 uppercase cursor-pointer select-none">
+                                    Gol de Visitante vale doble en empate
+                                </label>
+                            </div>
+
+                            <div class="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    name="penales_si_empate" 
+                                    id="edit-penales-empate"
+                                    class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                    checked={torneo.config?.playoff_config?.penales_si_empate_agregado}
+                                />
+                                <label for="edit-penales-empate" class="text-[10px] font-bold text-slate-600 uppercase cursor-pointer select-none">
+                                    Penales si hay empate global
+                                </label>
+                            </div>
+                         </div>
+                    </div>
+                </div>
+            )}
             <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all mt-4">Guardar Cambios</button>
         </form>
+        </div>
     </dialog>
 
     <!-- 2. New Jornada -->
@@ -720,6 +1029,10 @@ const standings = calculateStandings(equipos, matches);
 
     <!-- Match Events Manager (React) -->
     <MatchEventsManager client:only="react" />
+    
+    <!-- Delete Cascade Manager (React) -->
+    <DeleteCascadeManager client:only="react" />
+
 
      <dialog id="new-team-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-10 shadow-2xl w-full max-w-sm relative backdrop:bg-slate-900/60 focus:outline-none" role="dialog" aria-modal="true" aria-labelledby="modal-title-team" tabindex="-1">
         <button class="modal-close-btn absolute top-8 right-8 z-10 cursor-pointer text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-200 rounded-full p-1" aria-label="Cerrar"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
@@ -768,29 +1081,38 @@ const standings = calculateStandings(equipos, matches);
 
 
     <!-- Edit Match Modal (Teams & Date) -->
-    <dialog id="edit-match-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-8 shadow-2xl w-full max-w-md relative backdrop:bg-slate-900/60 focus:outline-none" role="dialog" aria-modal="true" aria-labelledby="modal-title-edit-match" tabindex="-1">
+    <dialog id="edit-match-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-8 shadow-2xl w-full max-w-md relative backdrop:bg-slate-900/60 focus:outline-none overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title-edit-match" tabindex="-1">
         <button class="modal-close-btn absolute top-6 right-6 z-10 cursor-pointer text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-200 rounded-full p-1" aria-label="Cerrar"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
         <h4 id="modal-title-edit-match" class="text-xl font-black uppercase tracking-tighter mb-6 pr-10">Editar Partido</h4>
         
-        <!-- Error Display -->
-        <div id="edit-match-error" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
-            <p class="text-red-600 text-sm font-bold"></p>
-        </div>
-        
-        <form id="edit-match-form" class="space-y-6">
+        <div class="h-full max-h-[70vh] overflow-y-auto pr-2 pb-6 custom-scrollbar">
+            <!-- Error Display -->
+            <div id="edit-match-error" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <p class="text-red-600 text-sm font-bold"></p>
+            </div>
+            
+            <form id="edit-match-form" class="space-y-6">
             <input type="hidden" name="id" id="edit-match-id-input" />
             
             <div class="space-y-1">
                 <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Equipo Local</label>
                 <select name="equipo_local_id" id="edit-match-local" required class="w-full bg-slate-50 border-none px-6 py-4 rounded-2xl font-bold text-slate-900 text-sm">
-                    {equipos?.map(e => <option value={e.id}>{e.nombre}</option>)}
+                    {equipos?.map(e => {
+                        const participante = participantesRaw?.find((p: any) => p.equipo_id === e.id);
+                        const grupo = participante?.grupo || '';
+                        return <option value={e.id} data-grupo={grupo}>{e.nombre}</option>;
+                    })}
                 </select>
             </div>
             
             <div class="space-y-1">
                 <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Equipo Visitante</label>
                 <select name="equipo_visitante_id" id="edit-match-visitante" required class="w-full bg-slate-50 border-none px-6 py-4 rounded-2xl font-bold text-slate-900 text-sm">
-                    {equipos?.map(e => <option value={e.id}>{e.nombre}</option>)}
+                    {equipos?.map(e => {
+                        const participante = participantesRaw?.find((p: any) => p.equipo_id === e.id);
+                        const grupo = participante?.grupo || '';
+                        return <option value={e.id} data-grupo={grupo}>{e.nombre}</option>;
+                    })}
                 </select>
             </div>
             
@@ -808,17 +1130,20 @@ const standings = calculateStandings(equipos, matches);
                 Guardar Cambios
             </button>
         </form>
+        </div>
     </dialog>
 
 
     <!-- Edit Jornada Modal -->
-    <dialog id="edit-jornada-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-10 shadow-2xl w-full max-w-lg relative focus:outline-none backdrop:bg-slate-900/60" role="dialog" aria-modal="true" aria-labelledby="modal-title-edit-jornada" tabindex="-1">
+    <dialog id="edit-jornada-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-10 shadow-2xl w-full max-w-lg relative focus:outline-none backdrop:bg-slate-900/60 overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title-edit-jornada" tabindex="-1">
         <button onclick="document.getElementById('edit-jornada-modal').close()" class="modal-close-btn absolute top-8 right-8 z-10 cursor-pointer text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-200 rounded-full p-1" aria-label="Cerrar"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
         <h3 id="modal-title-edit-jornada" class="text-2xl font-black uppercase tracking-tighter mb-8 text-slate-900">Editar Jornada</h3>
-        <form id="edit-jornada-form" class="space-y-4">
-            <input type="hidden" name="id" id="edit-jornada-id" />
-            <div class="space-y-1">
-                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Número de Jornada</label>
+        
+        <div class="h-full max-h-[70vh] overflow-y-auto pr-2 pb-6 custom-scrollbar">
+            <form id="edit-jornada-form" class="space-y-4">
+                <input type="hidden" name="id" id="edit-jornada-id" />
+                <div class="space-y-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Número de Jornada</label>
                 <input type="number" name="numero_jornada" id="edit-numero-jornada" required min="1" class="w-full bg-slate-50 border-none px-6 py-4 rounded-2xl font-bold text-slate-900" />
             </div>
             <div class="space-y-1">
@@ -919,6 +1244,26 @@ const standings = calculateStandings(equipos, matches);
             closeModal: (id: string) => void;
             showToast: (message: string, type?: 'success' | 'error') => void;
             showConfirm: (title: string, message: string, onConfirm: () => void) => void;
+            showCascadeWarning: (options: {
+                affectedMatches: any[];
+                totalEvents: number;
+                impactMessage: string;
+                onConfirm: () => void;
+            }) => void;
+            openEditJornadaModal: (id: string, numero: number, fase: string, inicio: string, fin: string) => void;
+            openLeagueFixtureModal: () => void;
+            openGroupsFixtureModal: () => void;
+            openMatchManager: (matchId: string) => void;
+            openEditMatchModal: (matchId: string, localId: string, visitanteId: string, fecha: string) => void;
+            MATCH_DATA: {
+                matches: any[];
+                allEvents: any[];
+                allPlayers: any[];
+            };
+            TORNEO_DATA: {
+                estado: string;
+                tipo: string;
+            };
         }
     }
 
@@ -937,33 +1282,209 @@ const standings = calculateStandings(equipos, matches);
     });
 
 
-    window.deleteItem = async (type: string, id: string) => {
-        const typeLabel = type === 'Match' ? 'partido' : 'noticia';
-        
-        window.showConfirm(
-            `Eliminar ${typeLabel}`,
-            `¿Estás seguro de que deseas eliminar ${type === 'Match' ? 'este partido' : 'esta noticia'}? Esta acción no se puede deshacer.`,
-            async () => {
-                const fd = new FormData();
-                fd.append('id', id);
 
-                let result;
-                if (type === 'Match') result = await actions.deleteMatch(fd);
-                else if (type === 'News') result = await actions.deleteNews(fd);
-                
-                if (result?.error) {
-                   window.showToast(result.error.message, 'error');
-                } else {
-                    // Success: redirect with message
-                    const successMsg = type === 'Match' ? 'Partido eliminado correctamente' : 'Noticia eliminada correctamente';
-                    const currentUrl = new URL(window.location.href);
-                    currentUrl.searchParams.set('msg', successMsg);
-                    currentUrl.searchParams.set('type', 'success');
-                    window.location.href = currentUrl.toString();
+    // Local delete function (not attached to window to avoid scope issues)
+    // Local delete function (not attached to window to avoid scope issues)
+    const deleteItem = async (type: string, id: string) => {
+        console.log('deleteItem called', type, id); // Debug log
+        try {
+            let typeLabel = '';
+            // Determine label
+            if (type === 'Match') typeLabel = 'partido';
+            else if (type === 'Jornada') typeLabel = 'jornada';
+            else if (type === 'News') typeLabel = 'noticia';
+            else if (type === 'TeamParticipation') typeLabel = 'inscripción de equipo';
+
+            const entityType = (type === 'Match' || type === 'Jornada') ? type.toLowerCase() : null;
+            
+            // Safe confirm helper
+            const safeConfirm = (title: string, msg: string, onConfirm: () => void) => {
+                if (typeof window.showConfirm === 'function') {
+                    window.showConfirm(title, msg, onConfirm);
+                } else if (confirm(`${title}\n${msg}`)) {
+                    onConfirm();
                 }
+            };
+            
+            // Safe toast helper
+            const safeToast = (msg: string, type: 'success' | 'error' = 'error') => {
+                if (typeof window.showToast === 'function') {
+                    window.showToast(msg, type);
+                } else {
+                    alert(`${type === 'error' ? 'Error' : 'Success'}: ${msg}`);
+                }
+            };
+
+            // Check for cascade impact if it's a match or jornada
+            if (entityType) {
+                console.log('Checking cascade impact for', entityType);
+                try {
+                    const checkFormData = new FormData();
+                    checkFormData.append('type', entityType);
+                    checkFormData.append('id', id);
+                    
+                    const { data: impactData, error: impactError } = await actions.checkDeleteImpact(checkFormData);
+                    
+                    if (impactError) {
+                        console.error('Error checking delete impact:', impactError);
+                        safeToast('Error al verificar el impacto de eliminación', 'error');
+                        return;
+                    }
+                    
+                    // If there's an impact, show cascade warning modal
+                    if (impactData?.hasImpact) {
+                        const showCascadeWarning = (window as any).showCascadeWarning;
+                        
+                        if (typeof showCascadeWarning === 'function') {
+                            // Check for Playoff Reset Scenario (Group Match with generated playoffs)
+                            const isPlayoffReset = impactData.message && (
+                                impactData.message.includes('Playoffs are already generated') || 
+                                impactData.message.includes('invalidate the current playoff bracket') ||
+                                impactData.message.includes('Group stage match deleting while playoffs exist')
+                            );
+
+                            showCascadeWarning({
+                                affectedMatches: impactData.affectedMatches || [],
+                                totalEvents: impactData.totalEvents || 0,
+                                impactMessage: impactData.message || '',
+                                showCascadeOption: isPlayoffReset,
+                                onConfirm: async (cascade: boolean) => {
+                                    await executeDelete(type, id, typeLabel, cascade);
+                                }
+                            });
+                            return; // Exit, wait for modal confirmation
+                        }
+                    }
+                    
+                    // No impact or standard confirmation
+                    safeConfirm(
+                        `Eliminar ${typeLabel}`,
+                        typeLabel === 'partido' 
+                        ? '¿Estás seguro de que deseas eliminar este partido? Esta acción no se puede deshacer.'
+                        : '⚠️ ¡ADVERTENCIA! Al eliminar esta jornada se eliminarán TODOS los partidos asociados a ella. ¿Estás seguro de continuar?',
+                        async () => {
+                            await executeDelete(type, id, typeLabel);
+                        }
+                    );
+                    
+                } catch (err: any) {
+                    console.error('Cascade check error:', err);
+                    safeToast(err.message || 'Error al verificar el impacto', 'error');
+                }
+            } else {
+                // Not match/jornada (e.g. News or TeamParticipation)
+                let message = `¿Estás seguro de que deseas eliminar ${typeLabel}? Esta acción no se puede deshacer.`;
+                if (type === 'TeamParticipation') {
+                     message = '¿Estás seguro de desinscribir a este equipo del torneo? Si el equipo ya tiene partidos programados, la acción fallará.';
+                }
+
+                safeConfirm(
+                    `Eliminar ${typeLabel}`,
+                    message,
+                    async () => {
+                        await executeDelete(type, id, typeLabel);
+                    }
+                );
             }
-        );
+        } catch (e) {
+            console.error('Fatal error in deleteItem:', e);
+            alert('Error inesperado al intentar eliminar. Revisa la consola.');
+        }
     };
+
+    // Attach listeners function
+    function attachDeleteListeners() {
+        console.log('Attaching delete listeners...');
+        const buttons = document.querySelectorAll('.delete-btn-trigger');
+        console.log(`Found ${buttons.length} delete buttons`);
+        
+        buttons.forEach(btn => {
+            if (btn.getAttribute('data-listener-attached') === 'true') return;
+            
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const type = btn.getAttribute('data-delete-type') || '';
+                const id = btn.getAttribute('data-delete-id') || '';
+                if (type && id) {
+                    deleteItem(type, id);
+                } else {
+                    console.error('Delete button missing data attributes', btn);
+                }
+            });
+            btn.setAttribute('data-listener-attached', 'true');
+        });
+    }
+
+    // Run on load
+    attachDeleteListeners();
+    // Also run on Astro page swap if using View Transitions
+    document.addEventListener('astro:page-load', attachDeleteListeners);
+
+    
+    // Helper function to execute the actual deletion
+    async function executeDelete(type: string, id: string, typeLabel: string, cascade = false) {
+        const fd = new FormData();
+        if (cascade) fd.append('cascade', 'true');
+        // For TeamParticipation we need torneo_id too, but action might handle it?
+        // Wait, old performDelete logic:
+        // const urlParts = window.location.pathname.split('/');
+        // const torneoId = urlParts[urlParts.length - 1];
+        // formData.append('torneo_id', torneoId);
+        // formData.append('equipo_id', id);
+        
+        // For Match/Jornada/News: fd.append('id', id);
+        
+        if (type === 'TeamParticipation') {
+             const urlParts = window.location.pathname.split('/');
+             // Ensure we get ID correctly. Path is usually /admin/torneo/[id]
+             // But sometimes /admin/torneo/[id]/...
+             // Best to use the hidden input if available, or parse URL strictly?
+             // Helper to get Torneo ID from URL commonly used in this file?
+             // The script has access to `id` (Astro prop) if we output it?
+             // No, script is client side.
+             // We can find the hidden input `name="id"` in `edit-tournament-form`?
+             const editForm = document.getElementById('edit-tournament-form') as HTMLFormElement;
+             let torneoId = '';
+             if (editForm) {
+                 torneoId = (editForm.querySelector('input[name="id"]') as HTMLInputElement)?.value;
+             }
+             if (!torneoId) {
+                  // Fallback to URL
+                  const parts = window.location.pathname.split('/');
+                  torneoId = parts[parts.length - 1] || parts[parts.length - 2]; 
+                  // If path ends in slash, length-1 is empty.
+                  if (!torneoId) torneoId = parts[parts.length - 3];
+             }
+             
+             fd.append('torneo_id', torneoId);
+             fd.append('equipo_id', id);
+        } else {
+            fd.append('id', id);
+        }
+
+        let result;
+        if (type === 'Match') result = await actions.deleteMatch(fd);
+        else if (type === 'Jornada') result = await actions.deleteJornada(fd);
+        else if (type === 'News') result = await actions.deleteNews(fd);
+        else if (type === 'TeamParticipation') result = await actions.unregisterTeamFromTournament(fd);
+        
+        if (result?.error) {
+           window.showToast(result.error.message, 'error');
+        } else {
+            // Success: redirect with message
+            let successMsg = '';
+            if (type === 'Match') successMsg = 'Partido eliminado correctamente';
+            else if (type === 'Jornada') successMsg = 'Jornada eliminada correctamente';
+            else if (type === 'News') successMsg = 'Noticia eliminada correctamente';
+            else if (type === 'TeamParticipation') successMsg = 'Equipo desinscrito correctamente';
+
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('msg', successMsg);
+            currentUrl.searchParams.set('type', 'success');
+            window.location.href = currentUrl.toString();
+        }
+    }
+
 
     window.closeModal = (id: string) => {
         const dialog = document.getElementById(id) as HTMLDialogElement;
@@ -1104,6 +1625,24 @@ const standings = calculateStandings(equipos, matches);
             return;
         }
         
+        // Validate teams are from the same group (for group tournaments)
+        const localSelect = document.getElementById('edit-match-local') as HTMLSelectElement;
+        const visitanteSelect = document.getElementById('edit-match-visitante') as HTMLSelectElement;
+        const localOption = localSelect.options[localSelect.selectedIndex];
+        const visitanteOption = visitanteSelect.options[visitanteSelect.selectedIndex];
+        const localGrupo = localOption?.getAttribute('data-grupo') || '';
+        const visitanteGrupo = visitanteOption?.getAttribute('data-grupo') || '';
+        
+        if (localGrupo && visitanteGrupo && localGrupo !== visitanteGrupo) {
+            if (errorDiv) {
+                const errorText = errorDiv.querySelector('p');
+                if (errorText) errorText.textContent = `Los equipos deben ser del mismo grupo. ${localOption.text} es del ${localGrupo} y ${visitanteOption.text} es del ${visitanteGrupo}`;
+                errorDiv.classList.remove('hidden');
+            }
+            window.showToast('Los equipos deben ser del mismo grupo', 'error');
+            return;
+        }
+        
         const { error } = await actions.updateMatch(formData);
         if (error) {
             if (errorDiv) {
@@ -1123,8 +1662,32 @@ const standings = calculateStandings(equipos, matches);
     // Open Edit Match Modal function
     window.openEditMatchModal = (matchId: string, localId: string, visitanteId: string, fecha: string) => {
         (document.getElementById('edit-match-id-input') as HTMLInputElement).value = matchId;
-        (document.getElementById('edit-match-local') as HTMLSelectElement).value = localId;
-        (document.getElementById('edit-match-visitante') as HTMLSelectElement).value = visitanteId;
+        
+        const localSelect = document.getElementById('edit-match-local') as HTMLSelectElement;
+        const visitanteSelect = document.getElementById('edit-match-visitante') as HTMLSelectElement;
+        
+        // Get the group from the currently selected local team
+        const currentLocalOption = Array.from(localSelect.options).find(opt => opt.value === localId);
+        const matchGroup = currentLocalOption?.getAttribute('data-grupo') || '';
+        
+        // Filter options to only show teams from the same group (if group exists)
+        const filterByGroup = (select: HTMLSelectElement, selectedValue: string) => {
+            Array.from(select.options).forEach(option => {
+                const optionGroup = option.getAttribute('data-grupo') || '';
+                // Show option if: no group assigned (non-group tournament) OR same group as match
+                if (!matchGroup || optionGroup === matchGroup || optionGroup === '') {
+                    option.style.display = '';
+                    option.disabled = false;
+                } else {
+                    option.style.display = 'none';
+                    option.disabled = true;
+                }
+            });
+            select.value = selectedValue;
+        };
+        
+        filterByGroup(localSelect, localId);
+        filterByGroup(visitanteSelect, visitanteId);
         
         const fechaInput = document.getElementById('edit-match-fecha') as HTMLInputElement;
         if (fechaInput) {
@@ -1192,7 +1755,18 @@ const standings = calculateStandings(equipos, matches);
                     (window as any).openLeagueFixtureModal();
                 } else {
                     console.error('LeagueFixtureModal not found');
-                    alert('Error: No se puede abrir el modal de configuración.');
+                    window.showToast('Error: No se puede abrir el modal de configuración.', 'error');
+                }
+                return;
+            }
+
+            // Groups + Playoff: Open Groups Modal
+            if (torneoTipo === 'grupos_eliminacion') {
+                if ((window as any).openGroupsFixtureModal) {
+                    (window as any).openGroupsFixtureModal();
+                } else {
+                    console.error('GroupsFixtureModal not found');
+                    window.showToast('Error: No se puede abrir el modal de configuración de grupos.', 'error');
                 }
                 return;
             }
@@ -1252,6 +1826,7 @@ const standings = calculateStandings(equipos, matches);
         });
     }
 
+
     // Delete All Jornadas Handler
     const deleteAllBtn = document.getElementById('delete-all-jornadas-btn') as HTMLButtonElement | null;
     if (deleteAllBtn) {
@@ -1290,6 +1865,47 @@ const standings = calculateStandings(equipos, matches);
                 }
             );
         })
+    }
+
+    // Generate Playoff Handler
+    const generatePlayoffBtn = document.getElementById('generate-playoff-btn') as HTMLButtonElement | null;
+    if (generatePlayoffBtn) {
+        generatePlayoffBtn.addEventListener('click', async () => {
+            const torneoId = generatePlayoffBtn.dataset.id;
+            const nombre = generatePlayoffBtn.dataset.nombre;
+            
+            window.showConfirm(
+                'Generar Fase Playoff',
+                `¿Estás listo para generar los playoffs del torneo "${nombre}"?\n\nSe verificarán los resultados de la fase de grupos y se crearán los cruces eliminatorios.`,
+                async () => {
+                    try {
+                        generatePlayoffBtn.disabled = true;
+                        generatePlayoffBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generando...';
+                        
+                        const result = await actions.generatePlayoffFromGroups({ torneoId: torneoId! });
+                        
+                        if (result.data && result.data.success) {
+                            if (typeof window.showToast === 'function') {
+                                window.showToast('Playoff generado correctamente!', 'success');
+                            }
+                            setTimeout(() => window.location.reload(), 1500);
+                        } else {
+                            throw new Error(result.error?.message || result.data?.message || 'Error desconocido');
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        generatePlayoffBtn.disabled = false;
+                        generatePlayoffBtn.innerHTML = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg> Generar Playoff';
+                        
+                        if (typeof window.showToast === 'function') {
+                            window.showToast(error instanceof Error ? error.message : 'Error al generar playoff', 'error');
+                        } else {
+                            alert(error instanceof Error ? error.message : 'Error al generar playoff');
+                        }
+                    }
+                }
+            );
+        });
     }
 
     // Edit Jornada Modal Logic
@@ -1347,103 +1963,57 @@ const standings = calculateStandings(equipos, matches);
         }
     }
 
-    async function deleteItem(type: string, id: string) {
-        let title = 'Eliminar Elemento';
-        let message = '¿Estás seguro de eliminar este elemento?';
+    // Make functions global
+    (window as any).openEditJornadaModal = openEditJornadaModal;
 
-        if (type === 'Jornada') {
-            title = 'Eliminar Jornada';
-            message = '¿Estás seguro de eliminar esta jornada? Esta acción es irreversible y no se puede deshacer.';
-        } else if (type === 'Match') {
-            title = 'Eliminar Partido';
-            message = '¿Estás seguro de eliminar este partido?';
-        } else if (type === 'News') {
-            title = 'Eliminar Noticia';
-            message = '¿Estás seguro de eliminar esta noticia?';
-        } else if (type === 'TeamParticipation') {
-            title = 'Desinscribir Equipo';
-            message = '¿Estás seguro de desinscribir a este equipo del torneo? Si el equipo ya tiene partidos programados, la acción fallará.';
-        }
-        
-        window.showConfirm(title, message, async () => {
-            await performDelete(type, id);
+    // Jornada Navigation
+    const jornadasNav = document.getElementById('jornadas-nav');
+    if (jornadasNav) {
+        // ... existing jornada nav logic ...
+    }
+
+    // Group Filter Logic
+    const groupFilterBtns = document.querySelectorAll('.group-filter-btn');
+    if (groupFilterBtns.length > 0) {
+        groupFilterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Update active state
+                groupFilterBtns.forEach(b => {
+                    b.classList.remove('bg-slate-900', 'text-white', 'shadow-lg');
+                    b.classList.add('bg-slate-50', 'text-slate-400');
+                });
+                btn.classList.remove('bg-slate-50', 'text-slate-400');
+                btn.classList.add('bg-slate-900', 'text-white', 'shadow-lg');
+
+                const selectedGroup = (btn as HTMLElement).dataset.group;
+                
+                // Filter matches
+                const allMatches = document.querySelectorAll('.match-card');
+                let visibleCount = 0;
+
+                allMatches.forEach(match => {
+                    const m = match as HTMLElement;
+                    if (selectedGroup === 'all') {
+                        m.style.display = '';
+                        visibleCount++;
+                    } else {
+                        const localGroup = m.dataset.groupLocal;
+                        const visitorGroup = m.dataset.groupVisitor;
+                        // Show if either team belongs to the group (covers inter-group if any, mainly intra-group)
+                        if (localGroup === selectedGroup || visitorGroup === selectedGroup) {
+                            m.style.display = '';
+                            visibleCount++;
+                        } else {
+                            m.style.display = 'none';
+                        }
+                    }
+                });
+            });
         });
     }
 
-    async function performDelete(type: string, id: string) {
-        try {
-            if (type === 'Jornada') {
-                const formData = new FormData();
-                formData.append('id', id);
-                const result = await actions.deleteJornada(formData);
-                
-                if (result.data) {
-                    const currentUrl = new URL(window.location.href);
-                    currentUrl.searchParams.set('msg', 'Jornada eliminada correctamente');
-                    currentUrl.searchParams.set('type', 'success');
-                    window.location.href = currentUrl.toString();
-                } else if (result.error) {
-                    throw new Error(result.error.message);
-                }
-            } else if (type === 'Match') {
-                const formData = new FormData();
-                formData.append('id', id);
-                const result = await actions.deleteMatch(formData);
-                
-                if (result.data) {
-                    const currentUrl = new URL(window.location.href);
-                    currentUrl.searchParams.set('msg', 'Partido eliminado correctamente');
-                    currentUrl.searchParams.set('type', 'success');
-                    window.location.href = currentUrl.toString();
-                } else if (result.error) {
-                    throw new Error(result.error.message);
-                }
-            } else if (type === 'News') {
-                const formData = new FormData();
-                formData.append('id', id);
-                const result = await actions.deleteNews(formData);
-                
-                if (result.data) {
-                     if (typeof window.showToast === 'function') {
-                        window.showToast('Noticia eliminada correctamente', 'success');
-                    }
-                    setTimeout(() => window.location.reload(), 1000);
-                } else if (result.error) {
-                     throw new Error(result.error.message);
-                }
-            } else if (type === 'TeamParticipation') {
-                // Get torneo_id from URL
-                const urlParts = window.location.pathname.split('/');
-                const torneoId = urlParts[urlParts.length - 1]; // Robust enough for now
-
-                const formData = new FormData();
-                formData.append('torneo_id', torneoId);
-                formData.append('equipo_id', id);
-
-                const result = await actions.unregisterTeamFromTournament(formData);
-                
-                if (result.data) {
-                    if (typeof window.showToast === 'function') {
-                        window.showToast('Equipo desinscrito correctamente', 'success');
-                    }
-                    setTimeout(() => window.location.reload(), 1000);
-                } else if (result.error) {
-                    throw new Error(result.error.message);
-                }
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            if (typeof window.showToast === 'function') {
-                window.showToast(error instanceof Error ? error.message : 'Error al eliminar', 'error');
-            } else {
-                console.error('Error al eliminar:', error);
-            }
-        }
-    }
-
-    // Make functions global
-    (window as any).openEditJornadaModal = openEditJornadaModal;
-    (window as any).deleteItem = deleteItem;
+    // Initialize logic if not already present...
+    // But since this is inside the script tag, assume it runs on load.
 
     // Handle edit jornada form submission
     const editJornadaForm = document.getElementById('edit-jornada-form');
@@ -1553,14 +2123,9 @@ const standings = calculateStandings(equipos, matches);
     (window as any).openMatchManager = window.openMatchManager;
 
     // --- Delete Logic ---
-    declare global {
-        interface Window {
-            deleteItem: (type: string, id: string) => Promise<void>;
-            showConfirm: (title: string, message: string, onConfirm: () => void) => void;
-            showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-            openLeagueFixtureModal: () => void;
-        }
-    }
+
+
+
 
     window.deleteItem = async (type: string, id: string) => {
         if (type !== 'Tournament') return;
@@ -1583,10 +2148,25 @@ const standings = calculateStandings(equipos, matches);
         );
     };
 
+    // Playoff Config Toggle (Edit Modal)
+    const editUsaIdaVueltaCheckbox = document.getElementById('edit-usa-ida-vuelta-checkbox');
+    const editPhasesSelection = document.getElementById('edit-phases-selection');
+
+    if (editUsaIdaVueltaCheckbox && editPhasesSelection) {
+        editUsaIdaVueltaCheckbox.addEventListener('change', (e) => {
+            if ((e.target as HTMLInputElement).checked) {
+                editPhasesSelection.classList.remove('hidden');
+            } else {
+                editPhasesSelection.classList.add('hidden');
+            }
+        });
+    }
+
   </script>
 
   <ConfirmationModal />
   <LeagueFixtureModal torneoId={id} />
+  <GroupsFixtureModal torneoId={id} totalEquipos={equipos.length} equipos={equipos} />
 
   <script define:vars={{ matches, allEvents, allPlayers, torneoEstado: torneo.estado, torneoTipo: torneo.tipo }}>
      window.MATCH_DATA = { matches, allEvents, allPlayers };

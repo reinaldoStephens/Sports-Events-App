@@ -277,6 +277,91 @@ const createResult = Astro.getActionResult(actions.createTournament);
           />
         </div>
 
+        <!-- Playoff Configuration (Only for Grupos + Playoff) -->
+        <div id="playoff-config-section" class="hidden border-t-2 border-slate-100 pt-6 space-y-4">
+          <div class="flex items-center gap-2 mb-3">
+            <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h4 class="text-sm font-black text-slate-700 uppercase tracking-wide">Configuración de Playoffs</h4>
+          </div>
+
+          <!-- Two-Legged Ties Toggle -->
+          <div class="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+            <label class="flex items-start gap-3 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                name="usa_ida_vuelta" 
+                id="usa-ida-vuelta-checkbox"
+                class="mt-1 w-5 h-5 rounded border-blue-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <div class="flex-1">
+                <span class="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">Usar Partidos de Ida y Vuelta</span>
+                <p class="text-xs text-slate-600 mt-1">Los playoffs se jugarán con formato profesional (local-visitante)</p>
+              </div>
+            </label>
+          </div>
+
+          <!-- Phase Selection (Only shown when two-legged is enabled) -->
+          <div id="phases-selection" class="hidden space-y-3 pl-8 border-l-2 border-blue-200">
+            <p class="text-xs font-semibold text-slate-600 mb-2">Selecciona las fases que usarán ida y vuelta:</p>
+            
+            <label class="flex items-center gap-2 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                name="fase_cuartos" 
+                value="quarterfinals"
+                class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                checked
+              />
+              <span class="text-sm font-medium text-slate-700 group-hover:text-blue-600 transition-colors">Cuartos de Final</span>
+            </label>
+
+            <label class="flex items-center gap-2 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                name="fase_semis" 
+                value="semifinals"
+                class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                checked
+              />
+              <span class="text-sm font-medium text-slate-700 group-hover:text-blue-600 transition-colors">Semifinales</span>
+            </label>
+
+            <label class="flex items-center gap-2 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                name="fase_final" 
+                value="final"
+                class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <span class="text-sm font-medium text-slate-700 group-hover:text-blue-600 transition-colors">Final</span>
+            </label>
+          </div>
+
+          <!-- Additional Options -->
+          <div class="space-y-3 bg-slate-50 rounded-2xl p-4">
+            <label class="flex items-center gap-2 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                name="usa_gol_visitante" 
+                class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <span class="text-sm font-medium text-slate-700 group-hover:text-blue-600 transition-colors">Regla de gol de visitante</span>
+            </label>
+
+            <label class="flex items-center gap-2 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                name="penales_si_empate" 
+                class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                checked
+              />
+              <span class="text-sm font-medium text-slate-700 group-hover:text-blue-600 transition-colors">Penales si empata en agregado</span>
+            </label>
+          </div>
+        </div>
+
         <button 
           type="submit" 
           class="group relative w-full bg-slate-900 text-white py-5 rounded-3xl font-black uppercase tracking-widest text-[10px] transition-all hover:bg-blue-600 active:scale-95 shadow-xl shadow-slate-900/10 overflow-hidden"
@@ -382,6 +467,30 @@ const createResult = Astro.getActionResult(actions.createTournament);
           }
         );
       });
+    });
+
+    // --- Playoff Configuration Toggle ---
+    const tipoSelect = document.querySelector('select[name="tipo"]') as HTMLSelectElement;
+    const playoffSection = document.getElementById('playoff-config-section');
+    const usaIdaVueltaCheckbox = document.getElementById('usa-ida-vuelta-checkbox') as HTMLInputElement;
+    const phasesSelection = document.getElementById('phases-selection');
+
+    // Show/hide playoff config based on tournament type
+    tipoSelect?.addEventListener('change', () => {
+      if (tipoSelect.value === 'grupos_eliminacion') {
+        playoffSection?.classList.remove('hidden');
+      } else {
+        playoffSection?.classList.add('hidden');
+      }
+    });
+
+    // Show/hide phase selection based on two-legged checkbox
+    usaIdaVueltaCheckbox?.addEventListener('change', () => {
+      if (usaIdaVueltaCheckbox.checked) {
+        phasesSelection?.classList.remove('hidden');
+      } else {
+        phasesSelection?.classList.add('hidden');
+      }
     });
 
     // --- Modal Logic ---

@@ -34,9 +34,9 @@ export const assignCaptain = defineAction({
 
     // Verify player belongs to this team
     const { data: player } = await actionSupabase
-      .from('deportistas')
-      .select('numero_cedula')
-      .eq('numero_cedula', input.capitan_cedula)
+      .from('equipo_deportistas')
+      .select('deportista_cedula')
+      .eq('deportista_cedula', input.capitan_cedula)
       .eq('equipo_id', input.equipo_id)
       .single();
 

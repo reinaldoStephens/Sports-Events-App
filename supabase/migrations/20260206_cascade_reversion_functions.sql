@@ -1,5 +1,6 @@
 -- Migration: Cascade Reversion Functions for Elimination Tournaments
 -- Created: 2026-02-06
+-- Updated: 2026-02-10 (Added Group Phase Cascade Logic)
 -- Purpose: Enable safe result correction with automatic cleanup of dependent matches
 
 -- =====================================================
@@ -18,6 +19,12 @@ DECLARE
   v_current_winner_id UUID;
   v_next_match_id UUID;
   v_match_info JSON;
+  
+  -- Variables for Group Phase Logic
+  v_torneo_tipo TEXT;
+  v_current_ronda TEXT;
+  v_torneo_id UUID;
+  v_playoff_matches INT;
 BEGIN
   -- Get current match details
   SELECT 
@@ -28,16 +35,91 @@ BEGIN
     p.puntos_visitante,
     p.siguiente_partido_id,
     p.estado_partido,
+    p.ronda,
+    p.torneo_id,
+    t.tipo as torneo_tipo,
     el.nombre as local_nombre,
     ev.nombre as visitante_nombre
   INTO v_current_match
   FROM partidos p
   LEFT JOIN equipos el ON p.equipo_local_id = el.id
   LEFT JOIN equipos ev ON p.equipo_visitante_id = ev.id
+  JOIN torneos t ON p.torneo_id = t.id
   WHERE p.id = p_match_id;
 
-  -- If match doesn't exist or has no next match, no impact
-  IF v_current_match IS NULL OR v_current_match.siguiente_partido_id IS NULL THEN
+  -- If match doesn't exist, return empty
+  IF v_current_match IS NULL THEN
+    RETURN json_build_object(
+      'has_impact', false,
+      'affected_matches', '[]'::json,
+      'total_events', 0
+    );
+  END IF;
+
+  -- =====================================================
+  -- SPECIAL LOGIC: Group Phase in Groups+Playoff Tournament
+  -- =====================================================
+  IF v_current_match.torneo_tipo = 'grupos_eliminacion' AND v_current_match.ronda IS NULL THEN
+      -- Check if any Playoff Matches exist (ronda IS NOT NULL)
+      -- We want to return THESE as the affected matches
+      
+      -- Calculate total events in playoffs
+      SELECT COUNT(*) INTO v_total_events
+      FROM eventos_partido
+      WHERE partido_id IN (
+          SELECT id FROM partidos 
+          WHERE torneo_id = v_current_match.torneo_id AND ronda IS NOT NULL
+      );
+      
+      -- Get list of affected matches (ALL playoff matches)
+      SELECT json_agg(json_build_object(
+        'match_id', p.id,
+        'fase', COALESCE(j.nombre_fase, p.ronda),
+        'local', el.nombre,
+        'visitante', ev.nombre,
+        'score_local', p.puntos_local,
+        'score_visitante', p.puntos_visitante,
+        'estado', p.estado_partido,
+        'events_count', (SELECT COUNT(*) FROM eventos_partido WHERE partido_id = p.id)
+      ))
+      INTO v_match_info -- using v_match_info to store the array temporarily or just assign to v_affected_matches directly if type matches
+      FROM partidos p
+      LEFT JOIN equipos el ON p.equipo_local_id = el.id
+      LEFT JOIN equipos ev ON p.equipo_visitante_id = ev.id
+      LEFT JOIN jornadas j ON p.jornada_id = j.id
+      WHERE p.torneo_id = v_current_match.torneo_id AND p.ronda IS NOT NULL;
+      
+      -- Cast the JSON array to the expected variable if needed, or just use it in the build_object
+      -- v_affected_matches is defined as JSON[], but json_agg returns JSON.
+      -- Let's parse it back to array or just handle it. 
+      -- Actually, `v_affected_matches` is `JSON[]`. `json_agg` returns `JSON`.
+      -- The return object expects `affected_matches` as `JSON` (array_to_json result).
+      -- So we can just use the result of json_agg directly in the return.
+
+      IF v_match_info IS NOT NULL THEN
+           -- json_agg returns a JSON array. 
+           RETURN json_build_object(
+              'has_impact', true,
+              'affected_matches', v_match_info, 
+              'total_events', v_total_events,
+              'impact_message', '⚠️ WARNING: This is a Group Stage match. Changing the result will RESET the entire Playoff Phase (' || json_array_length(v_match_info) || ' matches will be deleted). You will need to regenerate the playoffs.'
+            );
+      END IF;
+      
+      -- If no playoffs yet, no impact (safe to edit)
+      RETURN json_build_object(
+        'has_impact', false,
+        'affected_matches', '[]'::json,
+        'total_events', 0
+      );
+  END IF;
+
+  -- =====================================================
+  -- STANDARD LOGIC: Linked Matches (Elimination Chain)
+  -- =====================================================
+
+  -- If no next match linkage, no impact
+  IF v_current_match.siguiente_partido_id IS NULL THEN
     RETURN json_build_object(
       'has_impact', false,
       'affected_matches', '[]'::json,
@@ -112,7 +194,8 @@ BEGIN
     'has_impact', array_length(v_affected_matches, 1) > 0,
     'affected_matches', array_to_json(v_affected_matches),
     'total_events', v_total_events,
-    'current_winner_id', v_current_winner_id
+    'current_winner_id', v_current_winner_id,
+    'impact_message', NULL
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -139,22 +222,87 @@ DECLARE
   v_reset_matches INT := 0;
   v_affected_match_ids UUID[] := '{}';
   v_temp_count INT;
+  
+  -- Group Logic Variables
+  v_playoff_matches INT;
+  v_affected_jornadas UUID[];
 BEGIN
   -- Get current match
   SELECT 
-    id,
-    equipo_local_id,
-    equipo_visitante_id,
-    puntos_local,
-    puntos_visitante,
-    siguiente_partido_id
+    p.id,
+    p.equipo_local_id,
+    p.equipo_visitante_id,
+    p.puntos_local,
+    p.puntos_visitante,
+    p.siguiente_partido_id,
+    p.ronda,
+    p.torneo_id,
+    t.tipo as torneo_tipo
   INTO v_current_match
-  FROM partidos
-  WHERE id = p_match_id;
+  FROM partidos p
+  JOIN torneos t ON p.torneo_id = t.id
+  WHERE p.id = p_match_id;
 
   IF v_current_match IS NULL THEN
     RAISE EXCEPTION 'Match not found';
   END IF;
+
+  -- =====================================================
+  -- SPECIAL LOGIC: Group Phase in Groups+Playoff Tournament
+  -- =====================================================
+  IF v_current_match.torneo_tipo = 'grupos_eliminacion' AND v_current_match.ronda IS NULL THEN
+      -- Check if playoffs exist
+      SELECT COUNT(*) INTO v_playoff_matches
+      FROM partidos
+      WHERE torneo_id = v_current_match.torneo_id AND ronda IS NOT NULL;
+
+      IF v_playoff_matches > 0 THEN
+          -- 0. Capture Jornadas to check for cleanup later
+          SELECT array_agg(DISTINCT jornada_id) INTO v_affected_jornadas
+          FROM partidos
+          WHERE torneo_id = v_current_match.torneo_id AND ronda IS NOT NULL AND jornada_id IS NOT NULL;
+
+          -- 1. Delete events for all playoff matches
+          DELETE FROM eventos_partido
+          WHERE partido_id IN (
+              SELECT id FROM partidos 
+              WHERE torneo_id = v_current_match.torneo_id AND ronda IS NOT NULL
+          );
+
+          -- 2. Delete all playoff matches
+          DELETE FROM partidos
+          WHERE torneo_id = v_current_match.torneo_id AND ronda IS NOT NULL;
+
+          -- 2.5 Clean up empty jornadas
+          IF v_affected_jornadas IS NOT NULL THEN
+              DELETE FROM jornadas
+              WHERE id = ANY(v_affected_jornadas)
+              AND NOT EXISTS (SELECT 1 FROM partidos WHERE jornada_id = jornadas.id);
+          END IF;
+
+          v_reset_matches := v_playoff_matches;
+
+          -- 3. Update the group match with new score
+          UPDATE partidos
+          SET 
+            puntos_local = p_new_local_score,
+            puntos_visitante = p_new_visitor_score,
+            estado_partido = 'finalizado'
+          WHERE id = p_match_id;
+
+          RETURN json_build_object(
+            'success', true,
+            'deleted_events', 0, 
+            'reset_matches', v_reset_matches,
+            'affected_match_ids', '[]'::json,
+            'message', 'Playoff phase reset. Group match updated successfully.'
+          );
+      END IF;
+  END IF;
+
+  -- =====================================================
+  -- STANDARD LOGIC: Linked Matches
+  -- =====================================================
 
   IF v_current_match.siguiente_partido_id IS NULL THEN
     -- No cascade needed, just update the match

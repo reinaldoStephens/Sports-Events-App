@@ -1,0 +1,156 @@
+---
+interface Partido {
+  id: string;
+  equipo_local_id: string | null;
+  equipo_visitante_id: string | null;
+  puntos_local: number | null;
+  puntos_visitante: number | null;
+  estado_partido: 'pendiente' | 'en_curso' | 'finalizado';
+  fecha_partido: string | null;
+  local?: { nombre: string; logo_url: string | null };
+  visitante?: { nombre: string; logo_url: string | null };
+  jornada?: { nombre_fase: string | null; numero_jornada: number };
+  penales_jugados?: boolean | null;
+  penales_local?: number | null;
+  penales_visitante?: number | null;
+  es_partido_vuelta?: boolean;
+  marcador_agregado_local?: number | null;
+  marcador_agregado_visitante?: number | null;
+  ganador_agregado_id?: string | null;
+}
+
+interface Props {
+  matches: Partido[];
+}
+
+const { matches } = Astro.props;
+
+// Filter and Group Matches by Phase
+const playoffMatches = matches.filter(m => !m.jornada?.nombre_fase?.includes('Grupo'));
+
+const roundOrder: Record<string, number> = {
+  '32avos de Final': 1,
+  '16avos de Final': 2,
+  'Octavos de Final': 3,
+  'Cuartos de Final': 4,
+  'Semifinal': 5,
+  'Final': 6
+};
+
+// Group by phase
+const roundsMap = playoffMatches.reduce((acc, match) => {
+  const phase = match.jornada?.nombre_fase || 'Desconocido';
+  if (!acc[phase]) acc[phase] = [];
+  acc[phase].push(match);
+  return acc;
+}, {} as Record<string, Partido[]>);
+
+// Sort rounds
+const sortedRounds = Object.keys(roundsMap).sort((a, b) => {
+  const orderA = roundOrder[a] || 0;
+  const orderB = roundOrder[b] || 0;
+  return orderA - orderB;
+});
+---
+
+<div class="overflow-x-auto pb-8 custom-scrollbar">
+    <div class="min-w-max flex items-center gap-12 px-4 py-8">
+        {sortedRounds.length > 0 ? sortedRounds.map((phase, index) => (
+            <div class="flex flex-col gap-8 relative">
+                <h3 class="text-center font-black text-slate-400 uppercase tracking-widest text-xs mb-4">{phase}</h3>
+                
+                <div class={`flex flex-col justify-around h-full gap-8 ${phase === 'Final' ? 'justify-center' : ''}`}>
+                    {roundsMap[phase].map(match => (
+                        <div class="relative w-64 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                            {/* Connector Line (Left) - if not first round */}
+                            {index > 0 && (
+                                <div class="absolute top-1/2 -left-6 w-6 h-px bg-slate-200"></div>
+                            )}
+                            
+                            {/* Match Content */}
+                            <div class="flex flex-col divide-y divide-slate-100">
+                                {/* Local Team */}
+                                <div class={`px-4 py-3 flex items-center justify-between ${match.puntos_local !== null && match.puntos_visitante !== null && match.puntos_local > match.puntos_visitante ? 'bg-blue-50/50' : ''}`}>
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-6 h-6 bg-slate-50 rounded flex items-center justify-center p-0.5">
+                                             {match.local?.logo_url ? (
+                                                <img src={match.local.logo_url} class="w-full h-full object-contain" />
+                                             ) : (
+                                                <span class="text-[10px] font-black text-slate-300">{match.local?.nombre?.[0] || '?'}</span>
+                                             )}
+                                        </div>
+                                        <span class={`text-xs font-bold truncate max-w-[100px] ${match.puntos_local !== null && match.puntos_visitante !== null && match.puntos_local > match.puntos_visitante ? 'text-slate-900' : 'text-slate-500'}`}>
+                                            {match.local?.nombre || 'TBD'}
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        {/* Penalty Indicator for Local */}
+                                        {match.penales_jugados && match.penales_local !== null && (
+                                            <span class="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">
+                                                ({match.penales_local})
+                                            </span>
+                                        )}
+                                        <span class="font-black text-slate-900 text-sm">{match.puntos_local ?? '-'}</span>
+                                    </div>
+                                </div>
+
+                                {/* Visitante Team */}
+                                <div class={`px-4 py-3 flex items-center justify-between ${match.puntos_visitante !== null && match.puntos_local !== null && match.puntos_visitante > match.puntos_local ? 'bg-blue-50/50' : ''}`}>
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-6 h-6 bg-slate-50 rounded flex items-center justify-center p-0.5">
+                                             {match.visitante?.logo_url ? (
+                                                <img src={match.visitante.logo_url} class="w-full h-full object-contain" />
+                                             ) : (
+                                                <span class="text-[10px] font-black text-slate-300">{match.visitante?.nombre?.[0] || '?'}</span>
+                                             )}
+                                        </div>
+                                        <span class={`text-xs font-bold truncate max-w-[100px] ${match.puntos_visitante !== null && match.puntos_local !== null && match.puntos_visitante > match.puntos_local ? 'text-slate-900' : 'text-slate-500'}`}>
+                                            {match.visitante?.nombre || 'TBD'}
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        {/* Penalty Indicator for Visitante */}
+                                        {match.penales_jugados && match.penales_visitante !== null && (
+                                            <span class="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">
+                                                ({match.penales_visitante})
+                                            </span>
+                                        )}
+                                        <span class="font-black text-slate-900 text-sm">{match.puntos_visitante ?? '-'}</span>
+                                    </div>
+                                </div>
+
+                                {/* Aggregate Score (Global) - Only for Return Matches */}
+                                {match.es_partido_vuelta && match.marcador_agregado_local !== null && match.marcador_agregado_visitante !== null && (
+                                    <div class="px-4 py-1 bg-slate-100 text-center border-t border-slate-200">
+                                        <span class="text-[10px] uppercase font-black tracking-widest text-slate-500">
+                                            Global: {match.marcador_agregado_local} - {match.marcador_agregado_visitante}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Info Footer */}
+                            {!match.puntos_local && !match.puntos_visitante && match.fecha_partido && (
+                                <div class="px-4 py-2 bg-slate-50 border-t border-slate-100 text-[10px] text-center font-bold text-slate-400 uppercase tracking-wider">
+                                    {new Date(match.fecha_partido).toLocaleDateString()}
+                                </div>
+                            )}
+                            
+                             {/* Connector Line (Right) - if not last round */}
+                            {index < sortedRounds.length - 1 && (
+                                <div class="absolute top-1/2 -right-6 w-6 h-px bg-slate-200"></div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )) : (
+            <div class="w-full py-20 text-center">
+                 <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                 </div>
+                 <p class="text-slate-400 font-bold uppercase tracking-widest text-xs">Fase final no definida aún</p>
+            </div>
+        )}
+    </div>
+</div>
