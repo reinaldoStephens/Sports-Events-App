@@ -26,8 +26,10 @@ interface BracketPartido {
  */
 export const generatePlayoffFromGroupsHandler = async ({
   torneoId,
+  manualQualifiers,
 }: {
   torneoId: string;
+  manualQualifiers?: Record<string, string[]>;
 }): Promise<GenerateFixtureResult> => {
   console.log('🟦 [PlayoffFromGroups] Handler called for:', torneoId);
   const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
@@ -125,6 +127,15 @@ export const generatePlayoffFromGroupsHandler = async ({
     // 7. Calculate standings per group and select qualifiers
     const sortedGroupNames = Array.from(groupsMap.keys()).sort();
     const qualifiedTeams: { equipoId: string; grupo: string; position: number }[] = [];
+    const tiedGroups: { groupName: string; teams: any[]; slotsToFill: number }[] = [];
+
+    // Manual qualifiers map (From Input)
+    const manualQualifiersMap = new Map<string, string[]>();
+    if (manualQualifiers) {
+      Object.entries(manualQualifiers).forEach(([group, teams]) => {
+         manualQualifiersMap.set(group, teams as string[]);
+      });
+    }
 
     for (const groupName of sortedGroupNames) {
       const groupTeamIds = groupsMap.get(groupName)!;
@@ -135,12 +146,84 @@ export const generatePlayoffFromGroupsHandler = async ({
         m => m.equipo_local_id && m.equipo_visitante_id &&
           groupTeamIds.includes(m.equipo_local_id) &&
           groupTeamIds.includes(m.equipo_visitante_id)
-      ) as any[]; // Cast to any to avoid strict type mismatch with Partido interface
+      ) as any[]; 
 
       const standings = calculateStandings(groupEquipos, groupMatches);
-      console.log(`🟦 [PlayoffFromGroups] Group ${groupName} standings:`, standings.map(s => `${s.equipo.nombre} (${s.pts}pts)`));
+      
+      // Check for Manual Resolution for this group
+      if (manualQualifiersMap.has(groupName)) {
+         const manualOrderIds = manualQualifiersMap.get(groupName)!;
+         // Re-sort standings based on manual order
+         standings.sort((a, b) => {
+             const idxA = manualOrderIds.indexOf(a.equipo.id);
+             const idxB = manualOrderIds.indexOf(b.equipo.id);
+             // If not in manual list, push to end (shouldn't happen if list is complete)
+             if (idxA === -1) return 1;
+             if (idxB === -1) return -1;
+             return idxA - idxB;
+         });
+         console.log(`🟦 [PlayoffFromGroups] Group ${groupName} manually resolved.`);
+      } else {
+          // Check for Critical Ties at the cutoff
+          // Cutoff index is clasificadosPorGrupo - 1
+          const cutoffIndex = clasificadosPorGrupo - 1;
+          
+          if (standings.length > clasificadosPorGrupo) {
+              const lastQualifier = standings[cutoffIndex];
+              const firstNonQualifier = standings[cutoffIndex + 1];
 
-      // Select top N
+              // Check if they are STRICTLY TIED
+              // We need to compare specific stats. 
+              // calculateStandings returns objects with { pts, gf, gc, dp, pj, etc }
+              // And importantly, they were sorted by resolveTies.
+              // If resolveTies couldn't separate them, it fell back to General Stats.
+              // If General Stats are equal, it fell back to Random/Alphabetical.
+              
+              // We need to reconstruct the "Tie Check" logic briefly
+              // Using helper from standings logic ideally, or just raw compare
+              const areTied = (
+                  lastQualifier.pts === firstNonQualifier.pts &&
+                  lastQualifier.dp === firstNonQualifier.dp &&
+                  lastQualifier.pf === firstNonQualifier.pf && 
+                  lastQualifier.pc === firstNonQualifier.pc 
+              );
+
+              if (areTied) {
+                  // Find ALL teams tied at this boundary
+                  // e.g. 2nd, 3rd, 4th might all be tied.
+                  // We need to involve all of them in the manual resolution.
+                  const tiedSubset = standings.filter(s => 
+                      s.pts === lastQualifier.pts &&
+                      s.dp === lastQualifier.dp &&
+                      s.pf === lastQualifier.pf && 
+                      s.pc === lastQualifier.pc
+                  );
+
+                  // Calculate how many slots are available for these tied teams
+                  // Count teams ABOVE the tie cluster
+                  const teamsAbove = standings.filter(s => s.pts > lastQualifier.pts || (s.pts === lastQualifier.pts && s.dp > lastQualifier.dp)).length; 
+                  // This filter is approximate. Better: find index of first tied team in the sorted list.
+                  const firstTiedIndex = standings.indexOf(tiedSubset[0]);
+                  const slotsTakenBefore = firstTiedIndex;
+                  const slotsRemaining = clasificadosPorGrupo - slotsTakenBefore;
+
+                  if (slotsRemaining > 0 && slotsRemaining < tiedSubset.length) {
+                      tiedGroups.push({
+                          groupName,
+                          teams: tiedSubset.map(s => ({
+                              id: s.equipo.id,
+                              nombre: s.equipo.nombre,
+                              logo_url: s.equipo.logo_url,
+                              stats: { pts: s.pts, dp: s.dp, gf: s.pf }
+                          })),
+                          slotsToFill: slotsRemaining
+                      });
+                  }
+              }
+          }
+      }
+
+      // Select top N (Preliminary)
       for (let i = 0; i < clasificadosPorGrupo && i < standings.length; i++) {
         qualifiedTeams.push({
           equipoId: standings[i].equipo.id,
@@ -148,6 +231,15 @@ export const generatePlayoffFromGroupsHandler = async ({
           position: i + 1,
         });
       }
+    }
+
+    if (tiedGroups.length > 0) {
+        return {
+            success: false,
+            message: 'Se requiere desempate manual en algunos grupos.',
+            requireManualResolution: true,
+            tiedGroups
+        };
     }
 
     console.log('🟦 [PlayoffFromGroups] Qualified teams:', qualifiedTeams.map(q => `${q.grupo}${q.position}`));
@@ -222,35 +314,52 @@ export const generatePlayoffFromGroupsHandler = async ({
       const { shouldUseTwoLegs } = await import('../utils/playoff-helpers');
       const useTwoLegs = shouldUseTwoLegs(config, faseTipo);
 
-      const { data: jornada, error: jornadaError } = await supabase
-        .from('jornadas')
-        .insert({
-          torneo_id: torneoId,
-          numero_jornada: jornadaNumero,
-          nombre_fase: nombreJornada,
-          fase_tipo: faseTipo,
-          es_ida_vuelta: useTwoLegs,
-          max_partidos: useTwoLegs ? matchesInRound.length * 2 : matchesInRound.length,
-        })
-        .select('id')
-        .single();
-
-      if (jornadaError || !jornada) {
-        throw new Error(`Error al crear jornada ${nombreJornada}: ${jornadaError?.message}`);
-      }
-
-      jornadasCreadasCount++;
-      jornadaNumero++;
-
       // Create matches based on format (single or two-legged)
       if (useTwoLegs) {
-        // TWO-LEGGED FORMAT
+        // TWO-LEGGED FORMAT: Create two separate jornadas
         const { createTwoLeggedTie } = await import('../utils/playoff-helpers');
+        
+        // Jornada Ida
+        const { data: jornadaIda, error: jornadaIdaError } = await supabase
+          .from('jornadas')
+          .insert({
+            torneo_id: torneoId,
+            numero_jornada: jornadaNumero,
+            nombre_fase: `${nombreJornada} - Ida`,
+            fase_tipo: faseTipo,
+            es_ida_vuelta: true,
+            max_partidos: matchesInRound.length,
+          })
+          .select('id')
+          .single();
+
+        if (jornadaIdaError || !jornadaIda) throw new Error(`Error al crear jornada Ida para ${nombreJornada}`);
+        jornadasCreadasCount++;
+        jornadaNumero++;
+
+        // Jornada Vuelta
+        const { data: jornadaVuelta, error: jornadaVueltaError } = await supabase
+          .from('jornadas')
+          .insert({
+            torneo_id: torneoId,
+            numero_jornada: jornadaNumero,
+            nombre_fase: `${nombreJornada} - Vuelta`,
+            fase_tipo: faseTipo,
+            es_ida_vuelta: true,
+            max_partidos: matchesInRound.length,
+          })
+          .select('id')
+          .single();
+
+        if (jornadaVueltaError || !jornadaVuelta) throw new Error(`Error al crear jornada Vuelta para ${nombreJornada}`);
+        jornadasCreadasCount++;
+        jornadaNumero++;
         
         for (const match of matchesInRound) {
           const result = await createTwoLeggedTie(supabase, {
             torneoId,
-            jornadaId: jornada.id,
+            jornadaIdaId: jornadaIda.id,
+            jornadaVueltaId: jornadaVuelta.id,
             equipoLocal: match.local === 'TBD' || !match.local ? '' : match.local,
             equipoVisitante: match.visitante === 'TBD' || !match.visitante ? '' : match.visitante,
             ronda: match.ronda,
@@ -266,6 +375,26 @@ export const generatePlayoffFromGroupsHandler = async ({
         }
       } else {
         // SINGLE MATCH FORMAT (original logic)
+        const { data: jornada, error: jornadaError } = await supabase
+          .from('jornadas')
+          .insert({
+            torneo_id: torneoId,
+            numero_jornada: jornadaNumero,
+            nombre_fase: nombreJornada,
+            fase_tipo: faseTipo,
+            es_ida_vuelta: false,
+            max_partidos: matchesInRound.length,
+          })
+          .select('id')
+          .single();
+
+        if (jornadaError || !jornada) {
+          throw new Error(`Error al crear jornada ${nombreJornada}: ${jornadaError?.message}`);
+        }
+
+        jornadasCreadasCount++;
+        jornadaNumero++;
+
         const partidosToInsert = matchesInRound.map(match => ({
           jornada_id: jornada.id,
           torneo_id: torneoId,
@@ -333,6 +462,7 @@ export const generatePlayoffFromGroupsHandler = async ({
 export const generatePlayoffFromGroups = defineAction({
   input: z.object({
     torneoId: z.string().uuid(),
+    manualQualifiers: z.record(z.array(z.string())).optional(),
   }),
   handler: generatePlayoffFromGroupsHandler,
 });

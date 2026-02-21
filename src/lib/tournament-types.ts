@@ -32,10 +32,29 @@ export interface PartidoGenerado {
   siguiente_partido_index?: number;
 }
 
+export interface TiedTeam {
+  id: string;
+  nombre: string;
+  logo_url: string | null;
+  stats: {
+      pts: number;
+      dp: number;
+      gf: number;
+  }
+}
+
+export interface TiedGroup {
+  groupName: string;
+  teams: TiedTeam[];
+  slotsToFill: number;
+}
+
 export interface GenerateFixtureResult {
   success: boolean;
   message: string;
   jornadas_creadas?: number;
   partidos_creados?: number;
   error?: string;
+  requireManualResolution?: boolean;
+  tiedGroups?: TiedGroup[];
 }

@@ -897,7 +897,7 @@ export const server = {
     input: z.object({
       nombre: z.string().min(1, "El nombre es requerido"),
       deporte_id: z.string().uuid("Deporte requerido"),
-      tipo: z.enum(['liga', 'eliminacion_simple', 'grupos_eliminacion']).default('liga'),
+      tipo: z.enum(['liga', 'eliminacion_simple', 'grupos_eliminacion', 'todos_contra_todos']).default('liga'),
       fecha_inicio: z.string().min(1, "Fecha de inicio requerida"),
       fecha_fin: z.string().min(1, "Fecha de fin requerida"),
       estado: z.enum(['pendiente', 'activo', 'finalizado', 'cancelado']).default('pendiente'),
@@ -908,9 +908,11 @@ export const server = {
       fase_final: z.string().optional(),
       usa_gol_visitante: z.string().optional(),
       penales_si_empate: z.string().optional(),
+      // League Configuration
+      double_round: z.string().optional(),
     }),
     handler: async (input) => {
-        // Build playoff config if tournament is grupos_eliminacion
+        // Build config
         let config: any = {};
         
         if (input.tipo === 'grupos_eliminacion' && input.usa_ida_vuelta === 'on') {
@@ -925,6 +927,8 @@ export const server = {
             penales_si_empate_agregado: input.penales_si_empate === 'on',
             usa_gol_visitante: input.usa_gol_visitante === 'on',
           };
+        } else if (input.tipo === 'liga' || input.tipo === 'todos_contra_todos') {
+          config.double_round = input.double_round === 'true' || input.double_round === 'on';
         }
 
         const { data, error } = await actionSupabase
@@ -977,6 +981,7 @@ export const server = {
       fase_final: z.string().optional(),
       usa_gol_visitante: z.string().optional(),
       penales_si_empate: z.string().optional(),
+      double_round: z.string().optional(),
     }),
     handler: async (input) => {
       // If trying to change estado, validate for elimination tournaments
@@ -1112,6 +1117,15 @@ export const server = {
                     usa_gol_visitante: isChecked(input.usa_gol_visitante),
                };
                
+               updateData.config = currentConfig;
+           }
+       } else if (currentTorneo && (currentTorneo.tipo === 'liga' || currentTorneo.tipo === 'todos_contra_todos')) {
+           const currentConfig = (currentTorneo.config as any) || {};
+           const isEditFormSubmission = input.nombre !== undefined || input.fecha_inicio !== undefined;
+
+           if (isEditFormSubmission) {
+               // Update League Config 
+               currentConfig.double_round = input.double_round === 'true' || input.double_round === 'on';
                updateData.config = currentConfig;
            }
        }
@@ -1312,7 +1326,7 @@ export const server = {
           const { data: jornada } = await actionSupabase.from('jornadas').select('torneo_id').eq('id', input.jornada_id).single();
           if (!jornada) throw new ActionError({ code: 'NOT_FOUND', message: 'Jornada no encontrada' });
 
-          // Check if either team is already playing in this jornada
+          // 1. Validation: Prevent teams playing each other twice in the same jornada
           const { data: existingMatches } = await actionSupabase
             .from('partidos')
             .select('id, equipo_local_id, equipo_visitante_id')
@@ -1346,6 +1360,56 @@ export const server = {
             }
           }
 
+          // 2. Validation: Prevent duplicate matches across the entire tournament based on League settings
+          const { data: torneo } = await actionSupabase
+            .from('torneos')
+            .select('tipo, estado, config')
+            .eq('id', jornada.torneo_id)
+            .single();
+
+          if (torneo && (torneo.tipo === 'liga' || torneo.tipo === 'todos_contra_todos')) {
+              const config = (torneo.config as any) || {};
+              const isDoubleRound = !!config.double_round;
+
+              // Find all matches between these two teams in the tournament
+              const { data: historicalMatches } = await actionSupabase
+                  .from('partidos')
+                  .select('equipo_local_id, equipo_visitante_id')
+                  .eq('torneo_id', jornada.torneo_id)
+                  .or(`and(equipo_local_id.eq.${input.equipo_local_id},equipo_visitante_id.eq.${input.equipo_visitante_id}),and(equipo_local_id.eq.${input.equipo_visitante_id},equipo_visitante_id.eq.${input.equipo_local_id})`);
+
+              if (historicalMatches && historicalMatches.length > 0) {
+                  if (!isDoubleRound) {
+                      // Single Round Robin: Only 1 match allowed
+                      throw new ActionError({ 
+                          code: 'BAD_REQUEST', 
+                          message: 'Estos equipos ya tienen un enfrentamiento programado en este torneo. (Liga a una sola vuelta)' 
+                      });
+                  } else {
+                      // Double Round Robin: Max 2 matches allowed
+                      if (historicalMatches.length >= 2) {
+                          throw new ActionError({ 
+                              code: 'BAD_REQUEST', 
+                              message: 'Estos equipos ya completaron sus 2 enfrentamientos (ida y vuelta) permitidos en el torneo.' 
+                          });
+                      }
+                      
+                      // Check for exact same local/visitor arrangement
+                      const exactDuplicate = historicalMatches.find(m => 
+                          m.equipo_local_id === input.equipo_local_id && 
+                          m.equipo_visitante_id === input.equipo_visitante_id
+                      );
+                      
+                      if (exactDuplicate) {
+                          throw new ActionError({ 
+                              code: 'BAD_REQUEST', 
+                              message: 'El equipo local ya jugó como local contra este visitante. Invierte la localía para el partido de vuelta.' 
+                          });
+                      }
+                  }
+              }
+          }
+
           const { error } = await actionSupabase
             .from('partidos')
             .insert([{
@@ -1360,12 +1424,6 @@ export const server = {
           if (error) throw new ActionError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
 
           // Check if tournament should be auto-activated (for elimination tournaments)
-          const { data: torneo } = await actionSupabase
-            .from('torneos')
-            .select('tipo, estado')
-            .eq('id', jornada.torneo_id)
-            .single();
-
           if (torneo && (torneo.tipo === 'eliminacion_simple' || torneo.tipo === 'grupos_eliminacion') && torneo.estado === 'pendiente') {
             // Call checkAndActivateTournament logic inline
             const { count: teamCount } = await actionSupabase
@@ -1940,7 +1998,8 @@ export const server = {
       }
 
       // Check if we have events OR if we just want to finalize/update penalties
-      if (eventsList.length === 0 && !input.finalizar && !input.penales_jugados) return { success: true };
+      // Fix: Check for undefined explicitly because 'false' is a valid value we want to process (clearing penalties)
+      if (eventsList.length === 0 && !input.finalizar && input.penales_jugados === undefined) return { success: true };
 
       // Validate match exists and check tournament status
       const { data: match } = await actionSupabase
@@ -2586,7 +2645,7 @@ export const server = {
       // Get current match state
       const { data: currentMatch } = await supabase
         .from('partidos')
-        .select('estado_partido, torneo_id')
+        .select('estado_partido, torneo_id, ronda, equipo_local_id, equipo_visitante_id')
         .eq('id', input.id)
         .single();
 
@@ -2628,6 +2687,40 @@ export const server = {
           code: 'INTERNAL_SERVER_ERROR',
           message: error.message,
         });
+      }
+
+      // Check for two-legged sibling and apply inverted swap if this was a playoff match and teams changed
+      const teamsChanged = currentMatch.equipo_local_id !== input.equipo_local_id || currentMatch.equipo_visitante_id !== input.equipo_visitante_id;
+      
+      if (currentMatch.ronda && teamsChanged) {
+          // Look for the sibling match (e.g. the "Vuelta" or the "Ida" of the same playoff series)
+          // It should have the same torneo_id, same ronda, and the EXACT inverse of the ORIGINAL teams
+          const { data: siblingMatch } = await supabase
+              .from('partidos')
+              .select('id')
+              .eq('torneo_id', currentMatch.torneo_id)
+              .eq('ronda', currentMatch.ronda)
+              .eq('equipo_local_id', currentMatch.equipo_visitante_id) // Original Visitante is Local here
+              .eq('equipo_visitante_id', currentMatch.equipo_local_id) // Original Local is Visitante here
+              .neq('id', input.id) // Exclude the match we just updated (just in case)
+              .maybeSingle();
+              
+          if (siblingMatch) {
+              // Apply the INVERSE of the NEW selection to the sibling match
+              // If the new selection is [A vs B], the sibling should become [B vs A]
+              const { error: siblingError } = await supabase
+                  .from('partidos')
+                  .update({
+                      equipo_local_id: input.equipo_visitante_id,
+                      equipo_visitante_id: input.equipo_local_id,
+                  })
+                  .eq('id', siblingMatch.id);
+                  
+              if (siblingError) {
+                  console.error('Failed to sync two-legged sibling match:', siblingError);
+                  // We log but do not fail the whole request, as the main match was updated successfully.
+              }
+          }
       }
 
       return { success: true };
