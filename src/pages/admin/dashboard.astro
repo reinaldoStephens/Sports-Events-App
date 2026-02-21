@@ -3,6 +3,7 @@ import AdminSidebarLayout from '../../layouts/AdminSidebarLayout.astro';
 import { supabase } from '../../lib/supabase';
 import { actions } from 'astro:actions';
 import ToastNotification from '../../components/ToastNotification.astro';
+import { getTournamentChampion } from '../../utils/champion';
 
 // Fetch tournaments
 const { data: torneos } = await supabase
@@ -25,6 +26,21 @@ const deporteFutbol = deportes?.find(d =>
   d.nombre.toLowerCase().includes('fútbol') || 
   d.nombre.toLowerCase().includes('futbol')
 );
+
+// Fetch champions for finished tournaments
+const championsData: Record<string, any> = {};
+if (torneos && torneos.length > 0) {
+  const finishedTorneos = torneos.filter(t => t.estado === 'finalizado');
+  
+  // Resolve all promises concurrently
+  const championResults = await Promise.all(
+    finishedTorneos.map(t => getTournamentChampion(supabase, t.id, t.tipo))
+  );
+  
+  finishedTorneos.forEach((t, index) => {
+    championsData[t.id] = championResults[index];
+  });
+}
 
 const createResult = Astro.getActionResult(actions.createTournament);
 ---
@@ -95,9 +111,9 @@ const createResult = Astro.getActionResult(actions.createTournament);
             <!-- Content -->
             <div class="p-8 flex-1 flex flex-col">
               <div class="flex items-center gap-2 mb-4">
-                  <span class={`w-2 h-2 rounded-full ${new Date(torneo.fecha_fin) >= new Date() ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
+                  <span class={`w-2 h-2 rounded-full ${torneo.estado !== 'finalizado' ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
                   <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    {new Date(torneo.fecha_fin) >= new Date() ? 'Activo' : 'Finalizado'}
+                    {torneo.estado !== 'finalizado' ? 'Activo' : 'Finalizado'}
                   </span>
               </div>
 
@@ -118,17 +134,41 @@ const createResult = Astro.getActionResult(actions.createTournament);
                   </button>
               </div>
 
-              <div class="mt-auto pt-6 border-t border-slate-50 flex items-center justify-between text-slate-400">
-                 <div class="flex items-center gap-2 text-xs font-bold">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span>{new Date(torneo.fecha_inicio).getFullYear()}</span>
-                 </div>
-                 <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all transform group-hover:rotate-45">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
+              <div class="mt-auto pt-6 border-t border-slate-50 flex flex-col gap-4">
+                 
+                 {/* Champion Display */}
+                 {torneo.estado === 'finalizado' && championsData[torneo.id] && (
+                   <div class="flex items-center gap-3 bg-amber-50/50 rounded-2xl p-3 border border-amber-100">
+                     <div class="w-10 h-10 rounded-full bg-white shadow-sm border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                        {championsData[torneo.id].logo_url ? (
+                          <img src={championsData[torneo.id].logo_url} alt="Logo" class="w-full h-full object-cover" />
+                        ) : (
+                          <span class="text-amber-600 font-bold text-lg text-center leading-none">
+                            {championsData[torneo.id].nombre.charAt(0)}
+                          </span>
+                        )}
+                     </div>
+                     <div class="flex-1 min-w-0">
+                       <p class="text-[10px] font-black uppercase tracking-widest text-amber-600">🏆 Campeón</p>
+                       <p class="text-sm font-bold text-slate-800 truncate" title={championsData[torneo.id].nombre}>
+                         {championsData[torneo.id].nombre}
+                       </p>
+                     </div>
+                   </div>
+                 )}
+
+                 <div class="flex items-center justify-between text-slate-400">
+                   <div class="flex items-center gap-2 text-xs font-bold">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>{new Date(torneo.fecha_inicio).getFullYear()}</span>
+                   </div>
+                   <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all transform group-hover:rotate-45">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                   </div>
                  </div>
               </div>
             </div>
@@ -275,6 +315,31 @@ const createResult = Astro.getActionResult(actions.createTournament);
             placeholder="https://images.unsplash.com/foto-de-futbol" 
             class="w-full bg-slate-50 border-none px-6 py-4 rounded-2xl text-slate-900 font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-blue-500/10 transition-all"
           />
+        </div>
+
+        <!-- League Configuration (Only for Liga/Todos contra todos) -->
+        <div id="league-config-section" class="border-t-2 border-slate-100 pt-6 space-y-4">
+          <div class="flex items-center gap-2 mb-3">
+            <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            <h4 class="text-sm font-black text-slate-700 uppercase tracking-wide">Configuración de Liga</h4>
+          </div>
+
+          <div class="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+            <label class="flex items-start gap-3 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                name="double_round" 
+                value="true"
+                class="mt-1 w-5 h-5 rounded border-blue-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <div class="flex-1">
+                <span class="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">Ida y Vuelta (Doble Vuelta)</span>
+                <p class="text-xs text-slate-600 mt-1">Los equipos se enfrentarán dos veces durante el torneo, alternando localía.</p>
+              </div>
+            </label>
+          </div>
         </div>
 
         <!-- Playoff Configuration (Only for Grupos + Playoff) -->
@@ -469,20 +534,36 @@ const createResult = Astro.getActionResult(actions.createTournament);
       });
     });
 
-    // --- Playoff Configuration Toggle ---
+    // --- Configuration Toggles ---
     const tipoSelect = document.querySelector('select[name="tipo"]') as HTMLSelectElement;
     const playoffSection = document.getElementById('playoff-config-section');
+    const leagueSection = document.getElementById('league-config-section');
     const usaIdaVueltaCheckbox = document.getElementById('usa-ida-vuelta-checkbox') as HTMLInputElement;
     const phasesSelection = document.getElementById('phases-selection');
 
-    // Show/hide playoff config based on tournament type
-    tipoSelect?.addEventListener('change', () => {
-      if (tipoSelect.value === 'grupos_eliminacion') {
+    // Show/hide configs based on tournament type
+    const updateConfigVisibility = () => {
+      if (!tipoSelect) return;
+      
+      const isPlayoff = tipoSelect.value === 'grupos_eliminacion';
+      const isLeague = tipoSelect.value === 'liga';
+
+      if (isPlayoff) {
         playoffSection?.classList.remove('hidden');
       } else {
         playoffSection?.classList.add('hidden');
       }
-    });
+
+      if (isLeague) {
+        leagueSection?.classList.remove('hidden');
+      } else {
+        leagueSection?.classList.add('hidden');
+      }
+    };
+
+    tipoSelect?.addEventListener('change', updateConfigVisibility);
+    // Initialize standard view
+    updateConfigVisibility();
 
     // Show/hide phase selection based on two-legged checkbox
     usaIdaVueltaCheckbox?.addEventListener('change', () => {

@@ -6,6 +6,7 @@ import PlayoffBracket from '../../components/PlayoffBracket.astro';
 import NewsFeed from '../../components/NewsFeed.astro';
 import { supabase } from '../../lib/supabase';
 import { calculateStandings } from '../../lib/standings';
+import { getTournamentChampion } from '../../utils/champion';
 
 // Get params
 const { id } = Astro.params;
@@ -81,7 +82,6 @@ if (torneoError || !torneoRaw) {
 }
 
 const torneo = torneoRaw as Torneo;
-
 // 2. Matches
 // Using !inner on the join to filter by torneo_id
 const { data: matchesRaw } = await supabase
@@ -96,6 +96,16 @@ const { data: matchesRaw } = await supabase
     .order('fecha_partido', { ascending: true });
 
 const matches = (matchesRaw || []) as Partido[];
+
+// For liga: also show the champion when all matches are finalized
+// (mirrors grupos_eliminacion where champion shows once the final match is played)
+const allLeagueMatchesFinalized = torneo.tipo === 'liga' && matches.length > 0 &&
+  matches.every((m: Partido) => m.estado_partido === 'finalizado');
+
+let championData: any = null;
+if (torneo.estado === 'finalizado' || allLeagueMatchesFinalized) {
+  championData = await getTournamentChampion(supabase, torneo.id, torneo.tipo);
+}
 
 // 3. Equipos
 const { data: participantes } = await supabase
@@ -191,6 +201,23 @@ if (torneo.tipo === 'grupos_eliminacion' || torneo.tipo === 'eliminacion_simple'
                 </div>
                 <h1 class="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none">{torneo.nombre}</h1>
                 <p class="text-slate-400 max-w-2xl text-lg">{torneo.descripcion || 'La mejor competición deportiva del momento.'}</p>
+                
+                {/* Champion Badge in Hero */}
+                {(torneo.estado === 'finalizado' || allLeagueMatchesFinalized) && championData && (
+                    <div class="mt-6 inline-flex items-center gap-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 backdrop-blur-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
+                        <div class="w-14 h-14 bg-white rounded-xl shadow-lg flex items-center justify-center p-2 hidden sm:flex">
+                           {championData.logo_url ? (
+                               <img src={championData.logo_url} alt="Logo Campeón" class="w-full h-full object-contain" />
+                           ) : (
+                               <span class="text-amber-600 font-bold text-xl">{championData.nombre[0]}</span>
+                           )}
+                        </div>
+                        <div class="text-left">
+                            <span class="block text-amber-400 font-black text-[10px] uppercase tracking-[0.2em] mb-1">🏅 Equipo Campeón</span>
+                            <span class="block text-2xl font-black text-white tracking-tight leading-none">{championData.nombre}</span>
+                        </div>
+                    </div>
+                )}
              </div>
         </div>
     </div>

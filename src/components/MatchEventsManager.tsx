@@ -667,21 +667,45 @@ export default function MatchEventsManager() {
             <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4">
                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Definición por Penales</h4>
                 
-                <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-200">
-                    <input 
-                        type="checkbox" 
-                        id="check-penales-jugados"
-                        checked={penalesJugados}
-                        onChange={(e) => setPenalesJugados(e.target.checked)}
-                        disabled={isFormDisabled || (!matchData.esPartidoVuelta && golesLocal !== golesVisitante)}
-                        className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed" 
-                    />
-                    <label 
-                        htmlFor="check-penales-jugados" 
-                        className={`text-sm font-bold text-slate-700 cursor-pointer select-none ${isFormDisabled || (!matchData.esPartidoVuelta && golesLocal !== golesVisitante) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                        Se definió por penales {!matchData.esPartidoVuelta && golesLocal !== golesVisitante && '(Solo disponible en empate)'}
-                    </label>
+                <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200">
+                    <div className="flex items-center gap-3">
+                        <input 
+                            type="checkbox" 
+                            id="check-penales-jugados"
+                            checked={penalesJugados}
+                            onChange={(e) => {
+                                setPenalesJugados(e.target.checked);
+                                if (!e.target.checked) {
+                                    setPenalesLocal('');
+                                    setPenalesVisitante('');
+                                }
+                            }}
+                            disabled={isFormDisabled || (!matchData.esPartidoVuelta && golesLocal !== golesVisitante)}
+                            className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed" 
+                        />
+                        <label 
+                            htmlFor="check-penales-jugados" 
+                            className={`text-sm font-bold text-slate-700 cursor-pointer select-none ${isFormDisabled || (!matchData.esPartidoVuelta && golesLocal !== golesVisitante) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            Se definió por penales {!matchData.esPartidoVuelta && golesLocal !== golesVisitante && '(Solo disponible en empate)'}
+                        </label>
+                    </div>
+                    
+                    {penalesJugados && !isFormDisabled && (
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                if(confirm('¿Estás seguro de borrar los datos de penales?')) {
+                                    setPenalesJugados(false);
+                                    setPenalesLocal('');
+                                    setPenalesVisitante('');
+                                }
+                            }}
+                            className="text-xs text-red-500 hover:text-red-700 font-bold uppercase tracking-wider px-3 py-1 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                        >
+                            Borrar Penales
+                        </button>
+                    )}
                 </div>
                 
                 {penalesJugados && (

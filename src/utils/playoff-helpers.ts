@@ -16,14 +16,15 @@ export async function createTwoLeggedTie(
   supabase: SupabaseClient<any>,
   params: {
     torneoId: string;
-    jornadaId: string;
+    jornadaIdaId: string;
+    jornadaVueltaId: string;
     equipoLocal: string;
     equipoVisitante: string;
     ronda: string;
     siguientePartidoId?: string | null;
   }
 ): Promise<{ partidoIdaId: string; partidoVueltaId: string } | null> {
-  const { torneoId, jornadaId, equipoLocal, equipoVisitante, ronda, siguientePartidoId } = params;
+  const { torneoId, jornadaIdaId, jornadaVueltaId, equipoLocal, equipoVisitante, ronda, siguientePartidoId } = params;
 
   try {
     // 1. Create FIRST LEG (IDA)
@@ -31,7 +32,7 @@ export async function createTwoLeggedTie(
       .from('partidos')
       .insert({
         torneo_id: torneoId,
-        jornada_id: jornadaId,
+        jornada_id: jornadaIdaId,
         equipo_local_id: equipoLocal,
         equipo_visitante_id: equipoVisitante,
         estado_partido: 'pendiente',
@@ -52,7 +53,7 @@ export async function createTwoLeggedTie(
       .from('partidos')
       .insert({
         torneo_id: torneoId,
-        jornada_id: jornadaId,
+        jornada_id: jornadaVueltaId,
         equipo_local_id: equipoVisitante, // REVERSED
         equipo_visitante_id: equipoLocal, // REVERSED
         estado_partido: 'pendiente',
