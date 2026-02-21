@@ -423,7 +423,7 @@ const standings = calculateStandings(equipos, matches);
                         {matches.filter((m: Partido) => m.estado_partido === 'finalizado').slice(0, 5).map((match: Partido) => (
                             <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
                                 <div class="flex items-center gap-4 text-xs font-bold text-slate-600">
-                                    <span class="bg-slate-100 px-2 py-1 rounded text-[9px] uppercase tracking-widest">{match.jornada?.nombre_fase || 'Jornada ' + match.jornada?.numero_jornada}</span>
+                                    <span class="bg-slate-100 px-2 py-1 rounded text-[9px] uppercase tracking-widest">{(() => { const j = jornadas.find(j => j.id === match.jornada_id); return j?.nombre_fase || ('Jornada ' + (j?.numero_jornada ?? '?')); })()}</span>
                                     <span>{match.local?.nombre}</span>
                                     <span class="font-black text-slate-900">{match.puntos_local ?? '-'}</span>
                                     <span class="text-slate-300">vs</span>
@@ -1107,27 +1107,67 @@ const standings = calculateStandings(equipos, matches);
     <DeleteCascadeManager client:only="react" />
 
 
-     <dialog id="new-team-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-10 shadow-2xl w-full max-w-sm relative backdrop:bg-slate-900/60 focus:outline-none" role="dialog" aria-modal="true" aria-labelledby="modal-title-team" tabindex="-1">
+     <dialog id="new-team-modal" class="fixed inset-0 m-auto z-50 bg-white rounded-[3rem] p-10 shadow-2xl w-full max-w-md relative backdrop:bg-slate-900/60 focus:outline-none" role="dialog" aria-modal="true" aria-labelledby="modal-title-team" tabindex="-1">
         <button class="modal-close-btn absolute top-8 right-8 z-10 cursor-pointer text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-200 rounded-full p-1" aria-label="Cerrar"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
-        <h3 id="modal-title-team" class="text-2xl font-black uppercase tracking-tighter mb-8">Inscribir Equipo</h3>
-        <form id="register-team-form" class="space-y-6">
-            <input type="hidden" name="torneo_id" value={id} />
-            <div class="space-y-1">
-                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Seleccionar Equipo</label>
-                <select name="equipo_id" required class="w-full bg-slate-50 border-none px-6 py-5 rounded-2xl font-bold text-slate-900">
-                    <option value="">-- Seleccione un equipo --</option>
-                    {allTeams?.map(team => (
-                        <option value={team.id}>{team.nombre}</option>
-                    ))}
-                </select>
-            </div>
-            <button type="submit" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold text-xs uppercase tracking-widest">Inscribir</button>
-        </form>
+        <h3 id="modal-title-team" class="text-2xl font-black uppercase tracking-tighter mb-1">Inscribir Equipos</h3>
+        <p class="text-xs text-slate-400 font-medium mb-6">Selecciona uno o varios equipos para inscribir.</p>
+
+        <!-- Search -->
+        <div class="relative mb-3">
+            <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
+            <input id="team-search" type="text" placeholder="Buscar equipo..." class="w-full bg-slate-50 border-none pl-10 pr-4 py-3 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40" autocomplete="off" />
+        </div>
+
+        <!-- Select All row -->
+        <div class="flex items-center justify-between mb-2 px-1">
+            <button type="button" id="team-select-all" class="text-[11px] font-black text-blue-600 uppercase tracking-widest hover:underline">Seleccionar todos</button>
+            <span id="team-selected-count" class="text-[11px] font-bold text-slate-400">0 seleccionados</span>
+        </div>
+
+        <!-- Team checkbox list -->
+        <div id="team-checkbox-list" class="max-h-64 overflow-y-auto space-y-1 pr-1 custom-scrollbar mb-6">
+            {allTeams?.map(team => {
+                const alreadyIn = participantesRaw?.some((p: any) => p.equipo_id === team.id);
+                return (
+                    <label class:list={["team-item flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors", alreadyIn ? "opacity-50 cursor-not-allowed bg-slate-50" : "hover:bg-blue-50 has-[:checked]:bg-blue-50 has-[:checked]:ring-1 has-[:checked]:ring-blue-200"]}>
+                        <input
+                            type="checkbox"
+                            name="equipo_id"
+                            value={team.id}
+                            disabled={alreadyIn}
+                            class="team-checkbox w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 disabled:opacity-40"
+                        />
+                        {team.logo_url
+                            ? <img src={team.logo_url} alt={team.nombre} class="w-8 h-8 rounded-full object-cover ring-1 ring-slate-100" />
+                            : <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-black text-slate-600">{team.nombre.charAt(0)}</div>
+                        }
+                        <span class="text-sm font-bold text-slate-800 flex-1 min-w-0 truncate">{team.nombre}</span>
+                        {alreadyIn && <span class="text-[10px] font-black text-emerald-600 uppercase tracking-widest shrink-0">✓ Inscrito</span>}
+                    </label>
+                );
+            })}
+            {(!allTeams || allTeams.length === 0) && (
+                <p class="text-center text-sm text-slate-400 py-6">No hay equipos disponibles.</p>
+            )}
+        </div>
+
+        <!-- In-modal error -->
+        <div id="register-team-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+            <p class="text-red-700 font-bold text-xs"></p>
+        </div>
+
+        <button id="register-teams-btn" type="button" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            Inscribir Seleccionados
+        </button>
+
+        <input type="hidden" id="register-team-torneo-id" value={id} />
+
         <div class="mt-4 pt-4 border-t border-slate-100 text-center">
             <p class="text-xs text-slate-400 mb-2">¿No encuentras el equipo?</p>
             <a href="/admin/equipos" class="text-blue-600 font-bold text-xs uppercase tracking-widest hover:underline">Crear Nuevo Equipo</a>
         </div>
     </dialog>
+
 
     <!-- 6. New News -->
     <!-- 6. New News -->
@@ -1635,7 +1675,95 @@ const standings = calculateStandings(equipos, matches);
 
     handleForm('edit-tournament-form', 'updateTournament', undefined, 'Torneo actualizado correctamente');
     handleForm('create-jornada-form', 'createJornada', 'create-jornada-error', 'Jornada creada correctamente');
-    handleForm('register-team-form', 'registerTeamInTournament', undefined, 'Equipo inscrito correctamente');
+    // ── Multi-Select Team Enrollment Modal ──────────────────────────────
+    (() => {
+        const modal = document.getElementById('new-team-modal') as HTMLDialogElement | null;
+        if (!modal) return;
+
+        const searchInput  = modal.querySelector('#team-search')       as HTMLInputElement;
+        const selectAllBtn = modal.querySelector('#team-select-all')   as HTMLButtonElement;
+        const countLabel   = modal.querySelector('#team-selected-count') as HTMLSpanElement;
+        const registerBtn  = modal.querySelector('#register-teams-btn') as HTMLButtonElement;
+        const errorDiv     = modal.querySelector('#register-team-error') as HTMLDivElement;
+        const torneoId     = (modal.querySelector('#register-team-torneo-id') as HTMLInputElement)?.value;
+        const items        = () => Array.from(modal.querySelectorAll<HTMLLabelElement>('.team-item'));
+        const checkboxes   = () => Array.from(modal.querySelectorAll<HTMLInputElement>('.team-checkbox:not(:disabled)'));
+
+        const updateCount = () => {
+            const n = checkboxes().filter(c => c.checked).length;
+            countLabel.textContent = `${n} seleccionado${n !== 1 ? 's' : ''}`;
+            registerBtn.disabled = n === 0;
+            selectAllBtn.textContent = checkboxes().every(c => c.checked) ? 'Deseleccionar todos' : 'Seleccionar todos';
+        };
+
+        // Live search – show/hide labels
+        searchInput?.addEventListener('input', () => {
+            const q = searchInput.value.toLowerCase().trim();
+            items().forEach(label => {
+                const name = label.querySelector('span')?.textContent?.toLowerCase() || '';
+                (label as HTMLElement).style.display = (!q || name.includes(q)) ? '' : 'none';
+            });
+        });
+
+        // Select / Deselect all (only visible, non-disabled)
+        selectAllBtn?.addEventListener('click', () => {
+            const visible = checkboxes().filter(c => (c.closest('.team-item') as HTMLElement)?.style.display !== 'none');
+            const allChecked = visible.every(c => c.checked);
+            visible.forEach(c => { c.checked = !allChecked; });
+            updateCount();
+        });
+
+        // Update count on any checkbox change
+        modal.addEventListener('change', (e) => {
+            if ((e.target as HTMLElement).classList.contains('team-checkbox')) updateCount();
+        });
+
+        // Reset modal state when it opens
+        const openBtn = document.querySelector('[onclick*="new-team-modal"]') as HTMLElement | null;
+        modal.addEventListener('toggle', () => {
+            if (!modal.open) return;
+            searchInput.value = '';
+            items().forEach(l => (l as HTMLElement).style.display = '');
+            checkboxes().forEach(c => { c.checked = false; });
+            updateCount();
+            if (errorDiv) { errorDiv.classList.add('hidden'); (errorDiv.querySelector('p') as HTMLElement).textContent = ''; }
+        });
+
+        // Submit
+        registerBtn?.addEventListener('click', async () => {
+            const selected = checkboxes().filter(c => c.checked).map(c => c.value);
+            if (selected.length === 0) return;
+
+            registerBtn.disabled = true;
+            registerBtn.textContent = 'Inscribiendo...';
+            if (errorDiv) errorDiv.classList.add('hidden');
+
+            try {
+                const { error, data } = await actions.registerTeamsInTournament({ torneo_id: torneoId, equipo_ids: selected });
+                if (error) {
+                    if (errorDiv) {
+                        (errorDiv.querySelector('p') as HTMLElement).textContent = error.message;
+                        errorDiv.classList.remove('hidden');
+                    }
+                    window.showToast(error.message, 'error');
+                    registerBtn.disabled = false;
+                    registerBtn.textContent = 'Inscribir Seleccionados';
+                } else {
+                    const msg = data.skipped > 0
+                        ? `${data.inscribed} equipo(s) inscrito(s) (${data.skipped} ya estaban inscritos)`
+                        : `${data.inscribed} equipo(s) inscrito(s) correctamente`;
+                    const currentUrl = new URL(window.location.href);
+                    currentUrl.searchParams.set('msg', msg);
+                    currentUrl.searchParams.set('type', 'success');
+                    window.location.href = currentUrl.toString();
+                }
+            } catch (err: any) {
+                window.showToast(err.message || 'Error al inscribir equipos', 'error');
+                registerBtn.disabled = false;
+                registerBtn.textContent = 'Inscribir Seleccionados';
+            }
+        });
+    })();
     handleForm('create-match-form', 'createMatch', 'create-match-error', 'Partido programado correctamente');
     handleForm('create-news-form', 'createNews', undefined, 'Noticia publicada correctamente');
     

@@ -1145,7 +1145,6 @@ export const server = {
     }
   }),
 
-  // Add existing team to tournament
   registerTeamInTournament: defineAction({
       accept: 'form',
       input: z.object({
@@ -1181,6 +1180,51 @@ export const server = {
           return { success: true };
       }
   }),
+
+  // Bulk enroll multiple teams in a tournament at once
+  registerTeamsInTournament: defineAction({
+      accept: 'json',
+      input: z.object({
+          torneo_id: z.string(),
+          equipo_ids: z.array(z.string()).min(1, 'Debes seleccionar al menos un equipo'),
+      }),
+      handler: async ({ torneo_id, equipo_ids }) => {
+          // Check tournament status
+          const { data: torneo } = await actionSupabase.from('torneos').select('estado').eq('id', torneo_id).single();
+          if (torneo && (torneo.estado === 'activo' || torneo.estado === 'finalizado')) {
+              throw new ActionError({ code: 'FORBIDDEN', message: 'No se pueden inscribir equipos en torneos activos o finalizados.' });
+          }
+
+          // Get already-enrolled teams to skip them
+          const { data: existing } = await actionSupabase
+              .from('torneo_participantes')
+              .select('equipo_id')
+              .eq('torneo_id', torneo_id)
+              .in('equipo_id', equipo_ids);
+
+          const alreadyEnrolled = new Set((existing || []).map((r: any) => r.equipo_id));
+          const toInsert = equipo_ids
+              .filter(id => !alreadyEnrolled.has(id))
+              .map(equipo_id => ({ torneo_id, equipo_id }));
+
+          if (toInsert.length === 0) {
+              throw new ActionError({ code: 'CONFLICT', message: 'Todos los equipos seleccionados ya están inscritos.' });
+          }
+
+          const { error } = await actionSupabase
+              .from('torneo_participantes')
+              .insert(toInsert);
+
+          if (error) throw new ActionError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+          return {
+              success: true,
+              inscribed: toInsert.length,
+              skipped: alreadyEnrolled.size,
+          };
+      }
+  }),
+
 
   // Matchday & Match Management Actions (Restored)
   createJornada: defineAction({
